@@ -19,6 +19,7 @@ def clear_text(original, output):
     file2.close()
 
 
+
 class WikiCorpora:
     def __init__(self, batch_size, dump_file):
         self.bookmark = 0

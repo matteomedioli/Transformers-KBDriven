@@ -1,8 +1,8 @@
-from torch_geometric.nn import GraphConv
 
-from wordnet_graph import WordNetGraph, reduce_wordnet
 from dgn import MainModel, WordnetEmbeddings, DGN
 import torch
+from training_mlm import train_mlm
+import matplotlib.pyplot as plt
 from torchsummary import summary
 import numpy as np
 from collections import Counter
@@ -18,7 +18,9 @@ from utils import cuda_setup, get_batches, Config, insert_between
 import os
 from transformers import AutoTokenizer
 import json
+from utils import plot_pca
 from tqdm import tqdm
+
 
 # time_start = time.time()
 # date_time = datetime.now().strftime("%Y%m%d_%H_%M_%S")
@@ -37,6 +39,7 @@ print(np.unique(D.lemma))
 print(np.unique(D.pos))
 print(np.unique(D.sense))
 """
+
 W = torch.load("data/graphs/wordnet_ids.pt", map_location=torch.device('cpu'))
 print(W)
 
@@ -45,9 +48,9 @@ with open('config.json', 'r') as config_file:
 config = Config(config)
 
 model = MainModel(config)
-
-model(W)
-
+model = model.to(device)
+node_embeddings, names = model(W)
+train_mlm("train_transformers.json", node_embeddings)
 
 # layer_info = json.load("config.json")
 # dataset = torch.load("data/graphs/node_labels.pt")

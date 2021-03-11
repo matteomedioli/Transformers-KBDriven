@@ -1,13 +1,11 @@
 import torch
 from torch.utils.data import DataLoader
-import requests
+from sklearn.decomposition import PCA
+import matplotlib.pyplot as plt
+import numpy as np
 
 
 class Config(dict):
-    """
-    Example:
-    m = Config({'first_name': 'Eduardo'}, last_name='Pool', age=24, sports=['Soccer'])
-    """
 
     def __init__(self, *args, **kwargs):
         super(Config, self).__init__(*args, **kwargs)
@@ -91,3 +89,23 @@ def ohe(nz_indices, device):
 
 def get_batches(data, batch_size=32):
     return DataLoader(data, batch_size=batch_size)
+
+
+def plot_pca(X, colors=None, n_components=3, element_to_plot=5000):
+    if not colors:
+        colors = np.ones(len(X))
+    fig = plt.figure()
+    pca = PCA(n_components=n_components)
+    pca.fit(X)
+    pca_components = pca.transform(X)
+    if n_components == 2:
+        plt.scatter(pca_components[:element_to_plot, 0],
+                    pca_components[:element_to_plot, 1],
+                    c=colors[:element_to_plot])
+    elif n_components == 3:
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(pca_components[:element_to_plot, 0],
+                   pca_components[:element_to_plot, 1],
+                   pca_components[:element_to_plot, 2],
+                   c=colors[:element_to_plot])
+    plt.show()

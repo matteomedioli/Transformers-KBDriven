@@ -40,18 +40,26 @@ from transformers import (
     AutoModelForMaskedLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
-    HfArgumentParser,
-    Trainer,
     TrainingArguments,
     set_seed,
+    Trainer
 )
-from transformers.trainer_utils import get_last_checkpoint, is_main_process
 
+from hf_argparser import HfArgumentParser
+# from trainer import Trainer
+from transformers.trainer_utils import get_last_checkpoint, is_main_process
 
 logger = logging.getLogger(__name__)
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
+
+class CustomTrainer(Trainer):
+    def compute_loss(self, model, inputs):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        logits = outputs[0]
+        return my_custom_loss(logits, labels)
 
 @dataclass
 class ModelArguments:
@@ -63,7 +71,7 @@ class ModelArguments:
         default=None,
         metadata={
             "help": "The model checkpoint for weights initialization."
-            "Don't set if you want to train a model from scratch."
+                    "Don't set if you want to train a model from scratch."
         },
     )
     model_type: Optional[str] = field(
@@ -92,7 +100,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": "Will use the token generated when running `transformers-cli login` (necessary to use this script "
-            "with private models)."
+                    "with private models)."
         },
     )
 
@@ -127,7 +135,7 @@ class DataTrainingArguments:
         default=None,
         metadata={
             "help": "The maximum total input sequence length after tokenization. Sequences longer "
-            "than this will be truncated."
+                    "than this will be truncated."
         },
     )
     preprocessing_num_workers: Optional[int] = field(
@@ -145,7 +153,7 @@ class DataTrainingArguments:
         default=False,
         metadata={
             "help": "Whether to pad all samples to `max_seq_length`. "
-            "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+                    "If False, will pad the samples dynamically when batching to the maximum length in the batch."
         },
     )
 
@@ -161,20 +169,12 @@ class DataTrainingArguments:
                 assert extension in ["csv", "json", "txt"], "`validation_file` should be a csv, a json or a txt file."
 
 
-def main():
+def train_mlm(config_file, node_embeddings):
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
-    print("STRART")
-    print()
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
-    else:
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-
+    model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(config_file))
     # Detecting last checkpoint.
     last_checkpoint = None
     if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
@@ -199,9 +199,11 @@ def main():
     logger.setLevel(logging.INFO if is_main_process(training_args.local_rank) else logging.WARN)
 
     # Log on each process the small summary:
-    print("---------------------------------------------------------------------------------------------------------------------------\n")
+    print(
+        "---------------------------------------------------------------------------------------------------------------------------\n")
     print(f"device: {training_args.device}, n_gpu: {training_args.n_gpu}")
-    print("---------------------------------------------------------------------------------------------------------------------------\n")
+    print(
+        "---------------------------------------------------------------------------------------------------------------------------\n")
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
@@ -227,22 +229,23 @@ def main():
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        
-        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name, cache_dir = "/data/medioli/wikipedia/cache/")
+        cache_dir="data/corpora/cache/"
+        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name,
+                                cache_dir=cache_dir)
         if "validation" not in datasets.keys():
             datasets["validation"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
                 split=f"train[:{data_args.validation_split_percentage}%]",
-                cache_dir = "/data/medioli/wikipedia/cache/"
+                cache_dir=cache_dir
             )
             datasets["train"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
                 split=f"train[{data_args.validation_split_percentage}%:]",
-                cache_dir = "/data/medioli/wikipedia/cache/"
+                cache_dir=cache_dir
             )
-        
+
     else:
         data_files = {}
         if data_args.train_file is not None:
@@ -336,6 +339,7 @@ def main():
         def tokenize_function(examples):
             # Remove empty lines
             examples["text"] = [line for line in examples["text"] if len(line) > 0 and not line.isspace()]
+
             return tokenizer(
                 examples["text"],
                 padding=padding,
@@ -346,6 +350,8 @@ def main():
                 return_special_tokens_mask=True,
             )
 
+        logger.info("Dataset Mapping:")
+        logger.info("Lenght of dataset: "+str((len(datasets))))
         tokenized_datasets = datasets.map(
             tokenize_function,
             batched=True,
@@ -353,6 +359,7 @@ def main():
             remove_columns=[text_column_name],
             load_from_cache_file=not data_args.overwrite_cache,
         )
+        logger.info("Dataset TOKENIZED!")
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
@@ -379,7 +386,7 @@ def main():
             total_length = (total_length // max_seq_length) * max_seq_length
             # Split by chunks of max_len.
             result = {
-                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
+                k: [t[i: i + max_seq_length] for i in range(0, total_length, max_seq_length)]
                 for k, t in concatenated_examples.items()
             }
             return result
@@ -410,23 +417,27 @@ def main():
     #         outputs = model(**inputs)
     #         logits = outputs[0]
     #         return my_custom_loss(logits, labels)
+    logger.info("Init Trainer")
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
         eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
         tokenizer=tokenizer,
-        data_collator=data_collator,
+        data_collator=data_collator
     )
 
     # Training
     if training_args.do_train:
+
         if last_checkpoint is not None:
             checkpoint = last_checkpoint
         elif model_args.model_name_or_path is not None and os.path.isdir(model_args.model_name_or_path):
             checkpoint = model_args.model_name_or_path
         else:
             checkpoint = None
+            logger.info("CheckPoint None")
+        logger.info("Start Training Dio Merda")
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
@@ -460,12 +471,3 @@ def main():
                     writer.write(f"{key} = {value}\n")
 
     return results
-
-
-def _mp_fn(index):
-    # For xla_spawn (TPUs)
-    main()
-
-
-if __name__ == "__main__":
-    main()

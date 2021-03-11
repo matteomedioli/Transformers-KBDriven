@@ -1,9 +1,10 @@
 import torch_geometric
-from torch_geometric.nn import GraphConv, GATConv
 from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
+from utils import plot_pca
+import logging
 from torch.nn import Parameter
 from torch_scatter import scatter_add
 from torch_geometric.nn.conv import MessagePassing
@@ -27,8 +28,10 @@ class MainModel(torch.nn.Module):
     def forward(self, pyg_graph):
         input_ids = pyg_graph.x
         pyg_graph.x = self.embedding(input_ids)
-        node_embeddings = self.dgn(pyg_graph)
-        print(len(node_embeddings))
+        # plot_pca(pyg_graph.x.tolist(), colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
+        node_embeddings, _ = self.dgn(pyg_graph.x, pyg_graph)
+        # plot_pca(node_embeddings, colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
+        return node_embeddings, pyg_graph.name
 
 
 class DGN(nn.Module):
@@ -59,21 +62,25 @@ class DGN(nn.Module):
             layer_instance = targetClass(self.in_dim, config.dgn.hidden_sizes_list[0])
             self.layers.append(layer_instance)
             for i in range(len(config.dgn.hidden_sizes_list) - 1):
-                pre = config.dgn.hidden_sizes_list[i]
-                post = config.dgn.hidden_sizes_list[i + 1]
-                layer_instance = targetClass(pre, post)
+                in_dim = config.dgn.hidden_sizes_list[i]
+                out_dim = config.dgn.hidden_sizes_list[i + 1]
+                layer_instance = targetClass(in_dim, out_dim)
                 self.layers.append(layer_instance)
 
         if config.dgn.batch_norm:
             self.bn = torch.nn.BatchNorm1d(self.out_dim)
+        else:
+            self.bn = None
 
         if config.dgn.dropout:
             self.dropout = torch.nn.Dropout()
+        else:
+            self.dropout = None
 
     def forward(self, x, pyg_graph, batch=None):
         if batch is None:
-            batch = torch.zeros(x.shape[0]).long()
-        graph_embeddings = None
+            batch = torch.zeros(x.shape[0]).long().to()
+        graph_embeddings = torch.zeros(1, 2 * self.out_dim)  # 2 gap + gmp = 128 + 128
         if self.dropout:
             x = self.dropout(x)
         for l in self.layers:
@@ -83,7 +90,7 @@ class DGN(nn.Module):
         if self.bn:
             x = self.bn(x)
         node_embeddings = x
-
+        print(node_embeddings.shape, graph_embeddings.shape)
         return node_embeddings.detach(), graph_embeddings.detach()
 
 
@@ -91,8 +98,8 @@ class WordnetEmbeddings(nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        self.synset_embeddings = nn.Embedding(config.embedding.lemma_vocab_size, config.embedding.hidden_size)
-        self.lemma_embeddings = nn.Embedding(config.embedding.synset_vocab_size, config.embedding.hidden_size)
+        self.synset_embeddings = nn.Embedding(config.embedding.synset_vocab_size, config.embedding.hidden_size)
+        self.lemma_embeddings = nn.Embedding(config.embedding.lemma_vocab_size, config.embedding.hidden_size)
         self.pos_type_embeddings = nn.Embedding(config.embedding.pos_types, config.embedding.hidden_size)
         self.sense_embeddings = nn.Embedding(config.embedding.tot_sense, config.embedding.hidden_size)
 
@@ -102,12 +109,6 @@ class WordnetEmbeddings(nn.Module):
         self.dropout = nn.Dropout(config.embedding.hidden_dropout_prob)
 
     def forward(self, x):
-        import numpy as np
-        print(len(np.unique(x[:, 0].tolist())))
-        print(len(np.unique(x[:, 1].tolist())))
-        print(len(np.unique(x[:, 2].tolist())))
-        print(len(np.unique(x[:, 3].tolist())))
-
         synset_embeds = self.synset_embeddings(x[:, 0])
         pos_embeds = self.pos_type_embeddings(x[:, 1])
         sense_embeds = self.sense_embeddings(x[:, 2])

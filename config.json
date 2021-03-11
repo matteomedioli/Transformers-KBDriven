@@ -11,7 +11,8 @@
   "dgn": {
     "embedding_size": 128,
     "type": "gcn",
-    "activation": "relu"
+    "activation": "relu",
+    "hidden_sizes_list": []
   },
   "transformers": {
     "pred_type": "",
