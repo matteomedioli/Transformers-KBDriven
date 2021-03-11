@@ -15,11 +15,9 @@
 # limitations under the License.
 """
 Fine-tuning the library models for masked language modeling (BERT, ALBERT, RoBERTa...) on a text file or a dataset.
+
 Here is the full list of checkpoints on the hub that can be fine-tuned by this script:
 https://huggingface.co/models?filter=masked-lm
-
-Training RoBerta on Wikipedia from scratch:
-python3 training_mlm.py --dataset_name wikipedia --tokenizer_name roberta-base --model_type roberta --dataset_config_name 20200501.en --do_train --do_eval --learning_rate 1e-5 --num_train_epochs 5 --save_steps 5000 --warmup_steps=10000 --seed 666 --gradient_accumulation_steps=4 --output_dir /data/medioli/models/mlm_wikipedia_scratch/ --per_gpu_train_batch_size 8
 """
 # You can also adapt this script on your own masked language modeling task. Pointers for this are left as comments.
 
@@ -29,7 +27,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
-import torch
+
 from datasets import load_dataset
 
 import transformers
@@ -40,26 +38,18 @@ from transformers import (
     AutoModelForMaskedLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
+    Trainer,
     TrainingArguments,
     set_seed,
-    Trainer
 )
-
 from hf_argparser import HfArgumentParser
-# from trainer import Trainer
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
+
 
 logger = logging.getLogger(__name__)
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_MASKED_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
-
-class CustomTrainer(Trainer):
-    def compute_loss(self, model, inputs):
-        labels = inputs.pop("labels")
-        outputs = model(**inputs)
-        logits = outputs[0]
-        return my_custom_loss(logits, labels)
 
 @dataclass
 class ModelArguments:
@@ -71,7 +61,7 @@ class ModelArguments:
         default=None,
         metadata={
             "help": "The model checkpoint for weights initialization."
-                    "Don't set if you want to train a model from scratch."
+            "Don't set if you want to train a model from scratch."
         },
     )
     model_type: Optional[str] = field(
@@ -100,7 +90,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": "Will use the token generated when running `transformers-cli login` (necessary to use this script "
-                    "with private models)."
+            "with private models)."
         },
     )
 
@@ -135,7 +125,7 @@ class DataTrainingArguments:
         default=None,
         metadata={
             "help": "The maximum total input sequence length after tokenization. Sequences longer "
-                    "than this will be truncated."
+            "than this will be truncated."
         },
     )
     preprocessing_num_workers: Optional[int] = field(
@@ -153,7 +143,21 @@ class DataTrainingArguments:
         default=False,
         metadata={
             "help": "Whether to pad all samples to `max_seq_length`. "
-                    "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+            "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+        },
+    )
+    max_train_samples: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "For debugging purposes or quicker training, truncate the number of training examples to this "
+            "value if set."
+        },
+    )
+    max_val_samples: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "For debugging purposes or quicker training, truncate the number of validation examples to this "
+            "value if set."
         },
     )
 
@@ -175,6 +179,7 @@ def train_mlm(config_file, node_embeddings):
     # We now keep distinct sets of args, for a cleaner separation of concerns.
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(config_file))
+
     # Detecting last checkpoint.
     last_checkpoint = None
     if os.path.isdir(training_args.output_dir) and training_args.do_train and not training_args.overwrite_output_dir:
@@ -199,11 +204,6 @@ def train_mlm(config_file, node_embeddings):
     logger.setLevel(logging.INFO if is_main_process(training_args.local_rank) else logging.WARN)
 
     # Log on each process the small summary:
-    print(
-        "---------------------------------------------------------------------------------------------------------------------------\n")
-    print(f"device: {training_args.device}, n_gpu: {training_args.n_gpu}")
-    print(
-        "---------------------------------------------------------------------------------------------------------------------------\n")
     logger.warning(
         f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
         + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
@@ -229,23 +229,18 @@ def train_mlm(config_file, node_embeddings):
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        cache_dir="data/corpora/cache/"
-        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name,
-                                cache_dir=cache_dir)
+        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name)
         if "validation" not in datasets.keys():
             datasets["validation"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
                 split=f"train[:{data_args.validation_split_percentage}%]",
-                cache_dir=cache_dir
             )
             datasets["train"] = load_dataset(
                 data_args.dataset_name,
                 data_args.dataset_config_name,
                 split=f"train[{data_args.validation_split_percentage}%:]",
-                cache_dir=cache_dir
             )
-
     else:
         data_files = {}
         if data_args.train_file is not None:
@@ -304,7 +299,7 @@ def train_mlm(config_file, node_embeddings):
         )
     else:
         logger.info("Training new model from scratch")
-        model = AutoModelForMaskedLM.from_config(config).to(training_args.device)
+        model = AutoModelForMaskedLM.from_config(config)
 
     model.resize_token_embeddings(len(tokenizer))
 
@@ -339,7 +334,6 @@ def train_mlm(config_file, node_embeddings):
         def tokenize_function(examples):
             # Remove empty lines
             examples["text"] = [line for line in examples["text"] if len(line) > 0 and not line.isspace()]
-
             return tokenizer(
                 examples["text"],
                 padding=padding,
@@ -350,8 +344,6 @@ def train_mlm(config_file, node_embeddings):
                 return_special_tokens_mask=True,
             )
 
-        logger.info("Dataset Mapping:")
-        logger.info("Lenght of dataset: "+str((len(datasets))))
         tokenized_datasets = datasets.map(
             tokenize_function,
             batched=True,
@@ -359,7 +351,6 @@ def train_mlm(config_file, node_embeddings):
             remove_columns=[text_column_name],
             load_from_cache_file=not data_args.overwrite_cache,
         )
-        logger.info("Dataset TOKENIZED!")
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
@@ -386,7 +377,7 @@ def train_mlm(config_file, node_embeddings):
             total_length = (total_length // max_seq_length) * max_seq_length
             # Split by chunks of max_len.
             result = {
-                k: [t[i: i + max_seq_length] for i in range(0, total_length, max_seq_length)]
+                k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
                 for k, t in concatenated_examples.items()
             }
             return result
@@ -397,6 +388,7 @@ def train_mlm(config_file, node_embeddings):
         #
         # To speed up this part, we use multiprocessing. See the documentation of the map method for more information:
         # https://huggingface.co/docs/datasets/package_reference/main_classes.html#datasets.Dataset.map
+
         tokenized_datasets = tokenized_datasets.map(
             group_texts,
             batched=True,
@@ -404,70 +396,65 @@ def train_mlm(config_file, node_embeddings):
             load_from_cache_file=not data_args.overwrite_cache,
         )
 
+    if training_args.do_train:
+        if "train" not in tokenized_datasets:
+            raise ValueError("--do_train requires a train dataset")
+        train_dataset = tokenized_datasets["train"]
+        if data_args.max_train_samples is not None:
+            train_dataset = train_dataset.select(range(data_args.max_train_samples))
+
+    if training_args.do_eval:
+        if "validation" not in tokenized_datasets:
+            raise ValueError("--do_eval requires a validation dataset")
+        eval_dataset = tokenized_datasets["validation"]
+        if data_args.max_val_samples is not None:
+            eval_dataset = eval_dataset.select(range(data_args.max_val_samples))
+
     # Data collator
     # This one will take care of randomly masking the tokens.
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
     # Initialize our Trainer
-    # You can use custom trainer:
-    # from transformers import Trainer
-    # class MyTrainer(Trainer):
-    #     def compute_loss(self, model, inputs):
-    #         labels = inputs.pop("labels")
-    #         outputs = model(**inputs)
-    #         logits = outputs[0]
-    #         return my_custom_loss(logits, labels)
-    logger.info("Init Trainer")
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=tokenized_datasets["train"] if training_args.do_train else None,
-        eval_dataset=tokenized_datasets["validation"] if training_args.do_eval else None,
+        train_dataset=train_dataset if training_args.do_train else None,
+        eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
-        data_collator=data_collator
+        data_collator=data_collator,
     )
 
     # Training
     if training_args.do_train:
-
         if last_checkpoint is not None:
             checkpoint = last_checkpoint
         elif model_args.model_name_or_path is not None and os.path.isdir(model_args.model_name_or_path):
             checkpoint = model_args.model_name_or_path
         else:
             checkpoint = None
-            logger.info("CheckPoint None")
-        logger.info("Start Training Dio Merda")
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()  # Saves the tokenizer too for easy upload
+        metrics = train_result.metrics
 
-        output_train_file = os.path.join(training_args.output_dir, "train_results.txt")
-        if trainer.is_world_process_zero():
-            with open(output_train_file, "w") as writer:
-                logger.info("***** Train results *****")
-                for key, value in sorted(train_result.metrics.items()):
-                    logger.info(f"  {key} = {value}")
-                    writer.write(f"{key} = {value}\n")
+        max_train_samples = (
+            data_args.max_train_samples if data_args.max_train_samples is not None else len(train_dataset)
+        )
+        metrics["train_samples"] = min(max_train_samples, len(train_dataset))
 
-            # Need to save the state, since Trainer.save_model saves only the tokenizer with the model
-            trainer.state.save_to_json(os.path.join(training_args.output_dir, "trainer_state.json"))
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
+        trainer.save_state()
 
     # Evaluation
-    results = {}
     if training_args.do_eval:
         logger.info("*** Evaluate ***")
 
-        eval_output = trainer.evaluate()
+        metrics = trainer.evaluate()
 
-        perplexity = math.exp(eval_output["eval_loss"])
-        results["perplexity"] = perplexity
+        max_val_samples = data_args.max_val_samples if data_args.max_val_samples is not None else len(eval_dataset)
+        metrics["eval_samples"] = min(max_val_samples, len(eval_dataset))
+        perplexity = math.exp(metrics["eval_loss"])
+        metrics["perplexity"] = perplexity
 
-        output_eval_file = os.path.join(training_args.output_dir, "eval_results_mlm.txt")
-        if trainer.is_world_process_zero():
-            with open(output_eval_file, "w") as writer:
-                logger.info("***** Eval results *****")
-                for key, value in sorted(results.items()):
-                    logger.info(f"  {key} = {value}")
-                    writer.write(f"{key} = {value}\n")
-
-    return results
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
