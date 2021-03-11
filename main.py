@@ -40,7 +40,7 @@ print(np.unique(D.pos))
 print(np.unique(D.sense))
 """
 
-W = torch.load("data/graphs/wordnet_ids.pt", map_location=torch.device('cpu'))
+W = torch.load("/data/medioli/wordnet/wordnet_ids.pt")
 print(W)
 
 with open('config.json', 'r') as config_file:
