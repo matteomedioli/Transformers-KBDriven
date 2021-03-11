@@ -3,7 +3,7 @@ from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
-from utils import plot_pca
+from utils import plot_pca, cuda_setup
 import logging
 from torch.nn import Parameter
 from torch_scatter import scatter_add
@@ -11,6 +11,7 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
 from torch_geometric.nn.inits import glorot, zeros
 
+device = cuda_setup()
 
 class MainModel(torch.nn.Module):
     def __init__(
@@ -79,8 +80,8 @@ class DGN(nn.Module):
 
     def forward(self, x, pyg_graph, batch=None):
         if batch is None:
-            batch = torch.zeros(x.shape[0]).long().to()
-        graph_embeddings = torch.zeros(1, 2 * self.out_dim)  # 2 gap + gmp = 128 + 128
+            batch = torch.zeros(x.shape[0]).long().to(device)
+        graph_embeddings = torch.zeros(1, 2 * self.out_dim).to(device)  # 2 gap + gmp = 128 + 128
         if self.dropout:
             x = self.dropout(x)
         for l in self.layers:

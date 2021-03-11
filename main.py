@@ -41,6 +41,7 @@ print(np.unique(D.sense))
 """
 
 W = torch.load("/data/medioli/wordnet/wordnet_ids.pt")
+W = W.to(device)
 print(W)
 
 with open('config.json', 'r') as config_file:

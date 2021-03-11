@@ -4,16 +4,16 @@
     "model_type": "roberta",
     "config_name": null,
     "tokenizer_name": "roberta-base",
-    "cache_dir": null,
+    "cache_dir": "data/medioli/wikipedia/cache",
     "use_fast_tokenizer": true,
     "model_revision": "main",
     "use_auth_token": false
   },
 
  "DataTrainingArguments": {
-
+    "dataset_name":"wikipedia",
     "dataset_config_name": "20200501.en",
-    "train_file": "/home/med/Scrivania/Tesi/data/wikipedia/enwiki_clear.txt",
+    "train_file": null,
     "validation_file": null,
     "overwrite_cache": false,
     "validation_split_percentage": 5,
