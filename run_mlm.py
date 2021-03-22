@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-# coding=utf-8
 # Copyright 2020 The HuggingFace Team All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -36,6 +34,8 @@ from transformers import (
     MODEL_FOR_MASKED_LM_MAPPING,
     AutoConfig,
     AutoModelForMaskedLM,
+    BertForMaskedLM,
+    RobertaForMaskedLM,
     AutoTokenizer,
     DataCollatorForLanguageModeling,
     HfArgumentParser,
@@ -329,6 +329,8 @@ def main():
             config = BertConfigCustom()
         elif model_args.model_type == "roberta":
             config = RobertaConfigCustom()
+        else:
+            config = CONFIG_MAPPING[model_args.model_type]()
         logger.warning("You are instantiating a new config instance from scratch.")
 
     tokenizer_kwargs = {
@@ -359,8 +361,12 @@ def main():
         )
     else:
         logger.info("Training new model from scratch")
-        model = AutoModelForMaskedLM.from_config(config)
-
+        if model_args.model_type == "bert":
+            model = BertForMaskedLM(config)
+        elif model_args.model_type == "roberta":
+            model = RobertaForMaskedLM(config)
+        else:
+            model = AutoModelForMaskedLM.from_config(config)
     model.resize_token_embeddings(len(tokenizer))
 
     # Preprocessing the datasets.
@@ -527,3 +533,4 @@ def _mp_fn(index):
 
 if __name__ == "__main__":
     main()
+
