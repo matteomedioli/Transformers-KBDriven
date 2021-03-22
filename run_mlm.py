@@ -41,7 +41,7 @@ from transformers import (
     HfArgumentParser,
     Trainer,
     TrainingArguments,
-    set_seed,
+    set_seed, CONFIG_MAPPING,
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
@@ -362,8 +362,10 @@ def main():
     else:
         logger.info("Training new model from scratch")
         if model_args.model_type == "bert":
+            logger.info("Load BertForMaskedLM with config custom and size %s", str(config.max_position_embeddings))
             model = BertForMaskedLM(config)
         elif model_args.model_type == "roberta":
+            logger.info("Load RobertaForMaskedLMForMaskedLM with config custom and size %s", str(config.max_position_embeddings))
             model = RobertaForMaskedLM(config)
         else:
             model = AutoModelForMaskedLM.from_config(config)
@@ -533,4 +535,5 @@ def _mp_fn(index):
 
 if __name__ == "__main__":
     main()
+
 
