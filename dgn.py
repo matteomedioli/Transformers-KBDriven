@@ -3,15 +3,13 @@ from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
-from utils import plot_pca, cuda_setup
-import logging
-from torch.nn import Parameter
-from torch_scatter import scatter_add
-from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.utils import remove_self_loops, add_self_loops, softmax
-from torch_geometric.nn.inits import glorot, zeros
+from utils import cuda_setup
+from torch_cluster import random_walk
+from torch_geometric.nn import SAGEConv
+from torch_geometric.data import NeighborSampler as RawNeighborSampler
 
 device = cuda_setup()
+
 
 class MainModel(torch.nn.Module):
     def __init__(
@@ -24,15 +22,23 @@ class MainModel(torch.nn.Module):
         self.node_embedding_size = config.dgn.embedding_size
 
         self.embedding = WordnetEmbeddings(config)
-        self.dgn = DGN(config)
+        self.dgn = SAGE(config)
 
-    def forward(self, pyg_graph):
-        input_ids = pyg_graph.x
-        pyg_graph.x = self.embedding(input_ids)
+    def forward(self, x, adjs):
+        input_ids = x
+        x = self.embedding(input_ids)
         # plot_pca(pyg_graph.x.tolist(), colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
-        node_embeddings, _ = self.dgn(pyg_graph.x, pyg_graph)
+        node_embeddings = self.dgn(x, adjs)
         # plot_pca(node_embeddings, colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
-        return node_embeddings, pyg_graph.name
+        return node_embeddings
+
+    def full_forward(self, x, edge_index):
+        input_ids = x
+        x = self.embedding(input_ids)
+        # plot_pca(pyg_graph.x.tolist(), colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
+        node_embeddings = self.dgn.full_forward(x, edge_index)
+        # plot_pca(node_embeddings, colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
+        return node_embeddings
 
 
 class DGN(nn.Module):
@@ -119,3 +125,47 @@ class WordnetEmbeddings(nn.Module):
         embeddings = self.LayerNorm(embeddings)
         embeddings = self.dropout(embeddings)
         return embeddings
+
+
+class NeighborSampler(RawNeighborSampler):
+    def sample(self, batch):
+        batch = torch.tensor(batch)
+        row, col, _ = self.adj_t.coo()
+
+        # For each node in `batch`, we sample a direct neighbor (as positive
+        # example) and a random node (as negative example):
+        pos_batch = random_walk(row, col, batch, walk_length=1,
+                                coalesced=False)[:, 1]
+
+        neg_batch = torch.randint(0, self.adj_t.size(1), (batch.numel(),),
+                                  dtype=torch.long)
+
+        batch = torch.cat([batch, pos_batch, neg_batch], dim=0)
+        return super(NeighborSampler, self).sample(batch)
+
+
+class SAGE(nn.Module):
+    def __init__(self, config):
+        super(SAGE, self).__init__()
+        self.num_layers = config.sage.num_layers
+        self.convs = nn.ModuleList()
+        for i in range(self.num_layers):
+            in_channels = config.embedding.hidden_size if i == 0 else config.sage.hidden_channels
+            self.convs.append(SAGEConv(in_channels, config.sage.hidden_channels))
+
+    def forward(self, x, adjs):
+        for i, (edge_index, _, size) in enumerate(adjs):
+            x_target = x[:size[1]]  # Target nodes are always placed first.
+            x = self.convs[i]((x, x_target), edge_index)
+            if i != self.num_layers - 1:
+                x = x.relu()
+                x = F.dropout(x, p=0.5, training=self.training)
+        return x
+
+    def full_forward(self, x, edge_index):
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index)
+            if i != self.num_layers - 1:
+                x = x.relu()
+                x = F.dropout(x, p=0.5, training=self.training)
+        return x
