@@ -109,3 +109,17 @@ def plot_pca(X, colors=None, n_components=3, element_to_plot=5000):
                    pca_components[:element_to_plot, 2],
                    c=colors[:element_to_plot])
     plt.show()
+
+    
+def create_data_split(data, test_perc=0.1, val_perc=0.2):
+    num_test = round(data.num_nodes * test_perc)
+    num_val = round(data.num_nodes * val_perc)
+    data.train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+    data.val_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+    data.test_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
+    perm = torch.randperm(data.num_nodes)
+    t = data.num_nodes - (num_val + num_test)
+    data.train_mask[perm[:t]] = True
+    data.test_mask[perm[t:t+num_test]] = True
+    data.val_mask[perm[t+num_test:]] = True
+    return data
