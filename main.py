@@ -3,7 +3,7 @@ import torch
 import time
 import logging
 from datetime import datetime
-from utils import cuda_setup, get_batches, Config, insert_between
+from utils import cuda_setup, get_batches, create_data_split, Config, insert_between
 import os
 import json
 import torch.nn.functional as F
@@ -47,25 +47,19 @@ def test(model, x, edge_index):
     out = model.full_forward(x, edge_index).cpu()
 
     clf = LogisticRegression()
-    clf.fit(out[data.train_mask], data.y[data.train_mask])
+    clf.fit(out[data.train_mask], data.y[data.train_mask].cpu())
 
-    val_accuracy = clf.score(out[data.val_mask], data.y[data.val_mask])
-    test_accuracy = clf.score(out[data.test_mask], data.y[data.test_mask])
+    val_accuracy = clf.score(out[data.val_mask], data.y[data.val_mask].cpu())
+    test_accuracy = clf.score(out[data.test_mask], data.y[data.test_mask].cpu())
 
     return val_accuracy, test_accuracy
 
 
 data = torch.load("/data/medioli/wordnet/wordnet_ids.pt")
+data = create_data_split(data)
+data.y = torch.Tensor(data.node_type)
 data = data.to(device)
 print(data)
-
-# TODO: Add train_mask to Data
-#  File "main.py", line 78, in <module>
-#    val_acc, test_acc = test(model, data.x, data.edge_index)
-#  File "/data/medioli/env/lib64/python3.6/site-packages/torch/autograd/grad_mode.py", line 15, in decorate_context
-#    return func(*args, **kwargs)
-#  File "main.py", line 50, in test
-#    clf.fit(out[data.train_mask], data.y[data.train_mask])
 
 with open('config.json', 'r') as config_file:
     config = json.load(config_file)
@@ -86,6 +80,7 @@ for epoch in range(1, 51):
     val_acc, test_acc = test(model, data.x, data.edge_index)
     print(f'Epoch: {epoch:03d}, Loss: {loss:.4f}, '
           f'Val: {val_acc:.4f}, Test: {test_acc:.4f}')
+
 
 # TODO: Add integration
 #  for https://github.com/stellargraph/stellargraph/blob/ec132647e5cf43ff683e3f2e72e18ac6daa98202/stellargraph/layer/hinsage.py
