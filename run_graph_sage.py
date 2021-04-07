@@ -7,8 +7,7 @@ import os
 import json
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = "1"
-os.environ['CUDA_VISIBLE_DEVICES'] = "2"
-os.environ['OMP_NUM_THREADS'] = "32"
+
 device = cuda_setup()
 
 data = torch.load("/data/medioli/wordnet/wordnet_ids.pt")
