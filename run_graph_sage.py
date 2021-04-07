@@ -31,5 +31,13 @@ for epoch in range(1, 51):
     loss = model.unsupervised_training(data.x, data.edge_index)
     print(f'Epoch: {epoch:03d}, Total GraphSage Loss: {loss:.4f}, ')
 
-torch.save(model.state_dict(), "/data/medioli/models/dgn/graphsage/")
+for epoch in range(1, 151):
+    loss = model.unsupervised_training(data.x, data.edge_index)
+    print(f'Epoch: {epoch:03d}, Total GraphSage Loss: {loss:.4f}, ')
+    if epoch in [10,25,50,75,100,125,150]:
+        path = "/data/medioli/models/dgn/graphsage/epoch"+str(epoch)+"/"
+        os.mkdir(path)
+        torch.save(model.state_dict(), path)
+        os.popen("cp config.json "+path+"config.json")
+        os.popen("cp nohup.out "+path+"log.out")
 
