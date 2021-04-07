@@ -298,28 +298,3 @@ def networkx_to_Data(G):
     data.num_nodes = G.number_of_nodes()
 
     return data
-
-
-def create_text_gnn(layer_info, dataset):
-    lyr_dims = parse_as_int_list(layer_info["layer_dim_list"])
-    lyr_dims = [dataset.node_feats.shape[1]] + lyr_dims
-    weights = None
-    if layer_info["class_weights"].lower() == "true":
-        counts = Counter(dataset.label_inds[dataset.node_ids])
-        weights = len(counts) * [0]
-        min_weight = min(counts.values())
-        for k, v in counts.items():
-            weights[k] = min_weight / float(v)
-        weights = torch.tensor(weights, device=FLAGS.device)
-
-    return TextGNN(
-        pred_type=layer_info["pred_type"],
-        node_embd_type=layer_info["node_embd_type"],
-        num_layers=int(layer_info["num_layers"]),
-        layer_dim_list=lyr_dims,
-        act=layer_info["act"],
-        bn=False,
-        num_labels=len(dataset.label_dict),
-        class_weights=weights,
-        dropout=layer_info["dropout"]
-    )

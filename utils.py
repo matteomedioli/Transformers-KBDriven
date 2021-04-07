@@ -110,7 +110,6 @@ def plot_pca(X, colors=None, n_components=3, element_to_plot=5000):
                    c=colors[:element_to_plot])
     plt.show()
 
-    
 def create_data_split(data, test_perc=0.1, val_perc=0.2):
     num_test = round(data.num_nodes * test_perc)
     num_val = round(data.num_nodes * val_perc)

@@ -8,22 +8,14 @@
     "layer_norm_eps":1e-12,
     "hidden_dropout_prob":0.1
   },
+    "dgn": {
+    "embedding_size": 128,
+    "learning_rate": 0.000002,
+    "batch_size": 256
+  },
   "sage": {
     "hidden_channels": 64,
-    "num_layers": 2
-  },
-  "dgn": {
-    "embedding_size": 128,
-    "type": "gcn",
-    "activation": "relu",
-    "hidden_sizes_list": []
-  },
-  "transformers": {
-    "pred_type": "",
-    "node_embd_type": "",
-    "num_layers": "",
-    "layer_dim_list": "",
-    "act": "",
-    "dropout": ""
+    "num_layers": 2,
+    "sizes" : [10,10]
   }
 }

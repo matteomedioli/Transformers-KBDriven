@@ -11,18 +11,15 @@ from torch_geometric.data import NeighborSampler as RawNeighborSampler
 device = cuda_setup()
 
 
-class MainModel(torch.nn.Module):
+class GraphSageEmbeddingUnsup(torch.nn.Module):
     def __init__(
             self,
             config
     ):
-        super(MainModel, self).__init__()
-
-        self.input_embedding_size = config.embedding.hidden_size
-        self.node_embedding_size = config.dgn.embedding_size
-
-        self.embedding = WordnetEmbeddings(config)
-        self.dgn = SAGE(config)
+        super(GraphSageEmbeddingUnsup, self).__init__()
+        self.config = config
+        self.embedding = WordnetEmbeddings(self.config)
+        self.dgn = SAGE(self.config)
 
     def forward(self, x, adjs):
         input_ids = x
@@ -39,6 +36,103 @@ class MainModel(torch.nn.Module):
         node_embeddings = self.dgn.full_forward(x, edge_index)
         # plot_pca(node_embeddings, colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
         return node_embeddings
+
+    def unsupervised_training(self, x, edge_index):
+        num_nodes = len(x)
+        loader = NeighborSampler(edge_index, sizes=self.config.dgn.sizes, batch_size=self.config.dgn.batch_size,
+                                 shuffle=True, num_nodes=num_nodes)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.config.dgn.learning_rate)
+        self.train()
+        total_loss = 0
+        for batch_size, n_id, adjs in loader:
+            # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
+            adjs = [adj.to(device) for adj in adjs]
+            optimizer.zero_grad()
+
+            out = self.forward(x[n_id], adjs)
+            out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
+
+            pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
+            neg_loss = F.logsigmoid(-(out * neg_out).sum(-1)).mean()
+            loss = -pos_loss - neg_loss
+            loss.backward()
+            optimizer.step()
+
+            total_loss += float(loss) * out.size(0)
+
+        return total_loss / num_nodes
+
+
+class WordnetEmbeddings(nn.Module):
+
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.synset_embeddings = nn.Embedding(self.config.embedding.synset_vocab_size, self.config.embedding.hidden_size)
+        self.lemma_embeddings = nn.Embedding(self.config.embedding.lemma_vocab_size, self.config.embedding.hidden_size)
+        self.pos_type_embeddings = nn.Embedding(self.config.embedding.pos_types, self.config.embedding.hidden_size)
+        self.sense_embeddings = nn.Embedding(self.config.embedding.tot_sense, self.config.embedding.hidden_size)
+
+        # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
+        # any TensorFlow checkpoint file
+        self.LayerNorm = nn.LayerNorm(self.config.embedding.hidden_size, eps=self.config.embedding.layer_norm_eps)
+        self.dropout = nn.Dropout(self.config.embedding.hidden_dropout_prob)
+
+    def forward(self, x):
+        synset_embeds = self.synset_embeddings(x[:, 0])
+        pos_embeds = self.pos_type_embeddings(x[:, 1])
+        sense_embeds = self.sense_embeddings(x[:, 2])
+        lemma_embeds = self.lemma_embeddings(x[:, 3])
+        embeddings = synset_embeds + lemma_embeds
+        embeddings += (pos_embeds + sense_embeds)
+        embeddings = self.LayerNorm(embeddings)
+        embeddings = self.dropout(embeddings)
+        return embeddings
+
+
+class NeighborSampler(RawNeighborSampler):
+    def sample(self, batch):
+        batch = torch.tensor(batch)
+        row, col, _ = self.adj_t.coo()
+
+        # For each node in `batch`, we sample a direct neighbor (as positive
+        # example) and a random node (as negative example):
+        pos_batch = random_walk(row, col, batch, walk_length=1,
+                                coalesced=False)[:, 1]
+
+        neg_batch = torch.randint(0, self.adj_t.size(1), (batch.numel(),),
+                                  dtype=torch.long)
+
+        batch = torch.cat([batch, pos_batch, neg_batch], dim=0)
+        return super(NeighborSampler, self).sample(batch)
+
+
+class SAGE(nn.Module):
+    def __init__(self, config):
+        super(SAGE, self).__init__()
+        self.config = config
+        self.num_layers = self.config.sage.num_layers
+        self.convs = nn.ModuleList()
+        for i in range(self.num_layers):
+            in_channels = self.config.embedding.hidden_size if i == 0 else self.config.sage.hidden_channels
+            self.convs.append(SAGEConv(in_channels, self.config.sage.hidden_channels))
+
+    def forward(self, x, adjs):
+        for i, (edge_index, _, size) in enumerate(adjs):
+            x_target = x[:size[1]]  # Target nodes are always placed first.
+            x = self.convs[i]((x, x_target), edge_index)
+            if i != self.num_layers - 1:
+                x = x.relu()
+                x = F.dropout(x, p=self.config.sage.dropout, training=self.training)
+        return x
+
+    def full_forward(self, x, edge_index):
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index)
+            if i != self.num_layers - 1:
+                x = x.relu()
+                x = F.dropout(x, p=0.5, training=self.training)
+        return x
 
 
 class DGN(nn.Module):
@@ -99,73 +193,3 @@ class DGN(nn.Module):
         node_embeddings = x
         print(node_embeddings.shape, graph_embeddings.shape)
         return node_embeddings.detach(), graph_embeddings.detach()
-
-
-class WordnetEmbeddings(nn.Module):
-
-    def __init__(self, config):
-        super().__init__()
-        self.synset_embeddings = nn.Embedding(config.embedding.synset_vocab_size, config.embedding.hidden_size)
-        self.lemma_embeddings = nn.Embedding(config.embedding.lemma_vocab_size, config.embedding.hidden_size)
-        self.pos_type_embeddings = nn.Embedding(config.embedding.pos_types, config.embedding.hidden_size)
-        self.sense_embeddings = nn.Embedding(config.embedding.tot_sense, config.embedding.hidden_size)
-
-        # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
-        # any TensorFlow checkpoint file
-        self.LayerNorm = nn.LayerNorm(config.embedding.hidden_size, eps=config.embedding.layer_norm_eps)
-        self.dropout = nn.Dropout(config.embedding.hidden_dropout_prob)
-
-    def forward(self, x):
-        synset_embeds = self.synset_embeddings(x[:, 0])
-        pos_embeds = self.pos_type_embeddings(x[:, 1])
-        sense_embeds = self.sense_embeddings(x[:, 2])
-        lemma_embeds = self.lemma_embeddings(x[:, 3])
-        embeddings = synset_embeds + lemma_embeds
-        embeddings += (pos_embeds + sense_embeds)
-        embeddings = self.LayerNorm(embeddings)
-        embeddings = self.dropout(embeddings)
-        return embeddings
-
-
-class NeighborSampler(RawNeighborSampler):
-    def sample(self, batch):
-        batch = torch.tensor(batch)
-        row, col, _ = self.adj_t.coo()
-
-        # For each node in `batch`, we sample a direct neighbor (as positive
-        # example) and a random node (as negative example):
-        pos_batch = random_walk(row, col, batch, walk_length=1,
-                                coalesced=False)[:, 1]
-
-        neg_batch = torch.randint(0, self.adj_t.size(1), (batch.numel(),),
-                                  dtype=torch.long)
-
-        batch = torch.cat([batch, pos_batch, neg_batch], dim=0)
-        return super(NeighborSampler, self).sample(batch)
-
-
-class SAGE(nn.Module):
-    def __init__(self, config):
-        super(SAGE, self).__init__()
-        self.num_layers = config.sage.num_layers
-        self.convs = nn.ModuleList()
-        for i in range(self.num_layers):
-            in_channels = config.embedding.hidden_size if i == 0 else config.sage.hidden_channels
-            self.convs.append(SAGEConv(in_channels, config.sage.hidden_channels))
-
-    def forward(self, x, adjs):
-        for i, (edge_index, _, size) in enumerate(adjs):
-            x_target = x[:size[1]]  # Target nodes are always placed first.
-            x = self.convs[i]((x, x_target), edge_index)
-            if i != self.num_layers - 1:
-                x = x.relu()
-                x = F.dropout(x, p=0.5, training=self.training)
-        return x
-
-    def full_forward(self, x, edge_index):
-        for i, conv in enumerate(self.convs):
-            x = conv(x, edge_index)
-            if i != self.num_layers - 1:
-                x = x.relu()
-                x = F.dropout(x, p=0.5, training=self.training)
-        return x
