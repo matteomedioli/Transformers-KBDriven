@@ -37,31 +37,6 @@ class GraphSageEmbeddingUnsup(torch.nn.Module):
         # plot_pca(node_embeddings, colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
         return node_embeddings
 
-    def unsupervised_training(self, x, edge_index):
-        num_nodes = len(x)
-        loader = NeighborSampler(edge_index, sizes=self.config.dgn.sizes, batch_size=self.config.dgn.batch_size,
-                                 shuffle=True, num_nodes=num_nodes)
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.config.dgn.learning_rate)
-        self.train()
-        total_loss = 0
-        for batch_size, n_id, adjs in loader:
-            # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
-            adjs = [adj.to(device) for adj in adjs]
-            optimizer.zero_grad()
-
-            out = self.forward(x[n_id], adjs)
-            out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
-
-            pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
-            neg_loss = F.logsigmoid(-(out * neg_out).sum(-1)).mean()
-            loss = -pos_loss - neg_loss
-            loss.backward()
-            optimizer.step()
-
-            total_loss += float(loss) * out.size(0)
-
-        return total_loss / num_nodes
-
 
 class WordnetEmbeddings(nn.Module):
 
@@ -131,7 +106,7 @@ class SAGE(nn.Module):
             x = conv(x, edge_index)
             if i != self.num_layers - 1:
                 x = x.relu()
-                x = F.dropout(x, p=0.5, training=self.training)
+                x = F.dropout(x, p=self.config.sage.dropout, training=self.training)
         return x
 
 
