@@ -3,7 +3,7 @@ from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
-from utils import cuda_setup
+from utils import cuda_setup, plot_pca
 from torch_cluster import random_walk
 from torch_geometric.nn import SAGEConv
 from torch_geometric.data import NeighborSampler as RawNeighborSampler
@@ -29,12 +29,13 @@ class GraphSageEmbeddingUnsup(torch.nn.Module):
         # plot_pca(node_embeddings, colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
         return node_embeddings
 
-    def full_forward(self, x, edge_index):
+    def full_forward(self, x, edge_index, epoch):
         input_ids = x
         x = self.embedding(input_ids)
         # plot_pca(pyg_graph.x.tolist(), colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
-        node_embeddings = self.dgn.full_forward(x, edge_index)
-        # plot_pca(node_embeddings, colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
+        node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
+        path = "/data/medioli/models/dgn/graphsage_w2/epoch" + str(epoch) + "/"
+        plot_pca(node_embeddings, colors=None, n_components=3, element_to_plot=5000, path=path)
         return node_embeddings
 
 
@@ -72,7 +73,7 @@ class NeighborSampler(RawNeighborSampler):
 
         # For each node in `batch`, we sample a direct neighbor (as positive
         # example) and a random node (as negative example):
-        pos_batch = random_walk(row, col, batch, walk_length=1,
+        pos_batch = random_walk(row, col, batch, walk_length=2,
                                 coalesced=False)[:, 1]
 
         neg_batch = torch.randint(0, self.adj_t.size(1), (batch.numel(),),

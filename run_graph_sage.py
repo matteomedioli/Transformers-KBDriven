@@ -59,9 +59,9 @@ for epoch in range(1, 151):
     train_loss = train(GS, data.x, train_loader)
     print(f'Epoch: {epoch:03d}, Total GraphSage Loss: {train_loss:.4f}, ')
     if epoch in [1, 10, 25, 50, 75, 100, 125, 150]:
-        path = "/data/medioli/models/dgn/graphsage/epoch" + str(epoch) + "/"
-        print(path)
+        path = "/data/medioli/models/dgn/graphsage_w2/epoch"+str(epoch)+"/"
         if not os.path.exists(path):
             os.mkdir(path)
-            print(path)
-        torch.save(GS.state_dict(), path + "model.pt")
+        torch.save(GS.state_dict(), path+"model.pt")
+        node_embedding = GS.full_forward(data.x, data.edge_index, epoch)
+

@@ -91,7 +91,7 @@ def get_batches(data, batch_size=32):
     return DataLoader(data, batch_size=batch_size)
 
 
-def plot_pca(X, colors=None, n_components=3, element_to_plot=5000):
+def plot_pca(X, colors=None, n_components=3, element_to_plot=5000, path=None):
     if not colors:
         colors = np.ones(len(X))
     fig = plt.figure()
@@ -108,7 +108,8 @@ def plot_pca(X, colors=None, n_components=3, element_to_plot=5000):
                    pca_components[:element_to_plot, 1],
                    pca_components[:element_to_plot, 2],
                    c=colors[:element_to_plot])
-    plt.show()
+    print("Saving png...")
+    plt.savefig(path+"pca.png")
 
 def create_data_split(data, test_perc=0.1, val_perc=0.2):
     num_test = round(data.num_nodes * test_perc)
