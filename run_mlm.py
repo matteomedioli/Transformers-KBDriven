@@ -25,7 +25,7 @@ import os
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
-
+import torch
 from datasets import load_dataset
 
 import transformers
@@ -45,6 +45,7 @@ from transformers import (
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
+from regression import WordNodeRegression
 
 
 class BertConfigCustom(PretrainedConfig):
@@ -285,7 +286,8 @@ def main():
     # download the dataset.
     if data_args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
-        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name, cache_dir="/data/medioli/datasets/"+str(data_args.dataset_name))
+        datasets = load_dataset(data_args.dataset_name, data_args.dataset_config_name,
+                                cache_dir="/data/medioli/datasets/" + str(data_args.dataset_name))
         if "validation" not in datasets.keys():
             datasets["validation"] = load_dataset(
                 data_args.dataset_name,
@@ -364,7 +366,8 @@ def main():
             logger.info("Load BertForMaskedLM with config custom and size %s", str(config.max_position_embeddings))
             model = BertForMaskedLM(config)
         elif model_args.model_type == "roberta":
-            logger.info("Load RobertaForMaskedLMForMaskedLM with config custom and size %s", str(config.max_position_embeddings))
+            logger.info("Load RobertaForMaskedLMForMaskedLM with config custom and size %s",
+                        str(config.max_position_embeddings))
             model = RobertaForMaskedLM(config)
         else:
             model = AutoModelForMaskedLM.from_config(config)
@@ -395,29 +398,36 @@ def main():
         max_seq_length = min(data_args.max_seq_length, tokenizer.model_max_length)
 
     if data_args.line_by_line:
-        # When using line_by_line, we just tokenize each nonempty line.
-        padding = "max_length" if data_args.pad_to_max_length else False
+        if not os.path.exists(
+                "/data/medioli/datasets/tokenized_datasets.pt"):  # TOGLI IL NOT QUANDO SALVI NA ROBA DECENTE
+            logger.info("Load tokenized dataset: /data/medioli/datasets/tokenized_datasets.pt")
+            tokenized_datasets = torch.load("/data/medioli/datasets/tokenized_datasets.pt")
+        else:
+            # When using line_by_line, we just tokenize each nonempty line.
+            padding = "max_length" if data_args.pad_to_max_length else False
 
-        def tokenize_function(examples):
-            # Remove empty lines
-            examples["text"] = [line for line in examples["text"] if len(line) > 0 and not line.isspace()]
-            return tokenizer(
-                examples["text"],
-                padding=padding,
-                truncation=True,
-                max_length=max_seq_length,
-                # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
-                # receives the `special_tokens_mask`.
-                return_special_tokens_mask=True,
+            def tokenize_function(examples):
+                # Remove empty lines
+                examples["text"] = [line for line in examples["text"] if len(line) > 0 and not line.isspace()]
+                return tokenizer(
+                    examples["text"],
+                    padding=padding,
+                    truncation=True,
+                    max_length=max_seq_length,
+                    # We use this option because DataCollatorForLanguageModeling (see below) is more efficient when it
+                    # receives the `special_tokens_mask`.
+                    return_special_tokens_mask=True,
+                )
+
+            tokenized_datasets = datasets.map(
+                tokenize_function,
+                batched=True,
+                num_proc=data_args.preprocessing_num_workers,
+                remove_columns=[text_column_name],
+                load_from_cache_file=not data_args.overwrite_cache,
             )
-
-        tokenized_datasets = datasets.map(
-            tokenize_function,
-            batched=True,
-            num_proc=data_args.preprocessing_num_workers,
-            remove_columns=[text_column_name],
-            load_from_cache_file=not data_args.overwrite_cache,
-        )
+            torch.save(tokenized_datasets, "/data/medioli/datasets/tokenized_datasets.pt")
+            logger.info("SAVED TOKENIZED DATASET")
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
@@ -462,7 +472,6 @@ def main():
             num_proc=data_args.preprocessing_num_workers,
             load_from_cache_file=not data_args.overwrite_cache,
         )
-
     if training_args.do_train:
         if "train" not in tokenized_datasets:
             raise ValueError("--do_train requires a train dataset")
@@ -481,8 +490,55 @@ def main():
     # This one will take care of randomly masking the tokens.
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
+    class CustomTrainer(Trainer):
+        def compute_loss(self, model, inputs, return_outputs=False):
+            if self.label_smoother is not None and "labels" in inputs:
+                labels = inputs.pop("labels")
+            else:
+                labels = None
+            # todo: qua aggiungi decode phase per ricavare trainining sentence to pair with node embedding
+            text_list = []
+            print()
+            print("INPUTS IDS[3]: ", len(inputs["input_ids"][3]))
+            print("STRING[3]:", inputs["input_ids"][3])
+            # print("STRING[3][400]:", tokenizer.decode(inputs["input_ids"][3]).split(" ")[1])
+            # print("STRING[3][401]:", tokenizer.decode(inputs["input_ids"][3]).split(" ")[7])
+            print()
+            outputs = model(**inputs, output_hidden_states=True)
+            hidden_states = outputs["hidden_states"]
+            wnr = WordNodeRegression(inputs["input_ids"], hidden_states[0], tokenizer)
+            print("Number of layers:", len(hidden_states), "  (initial embeddings + 12 BERT layers)")
+            layer_i = 0
+
+            print("Number of batches:", len(hidden_states[layer_i]))
+            batch_i = 3
+
+            print("Number of tokens:", len(hidden_states[layer_i][batch_i]))
+            token_i = 0
+
+            print("Number of hidden units:", len(hidden_states[layer_i][batch_i][token_i]))
+
+            # print("HIDDEN STATES[0][3]:", len(outputs["hidden_states"][0][3]))
+            # print("HIDDEN STATES[0][3]:", outputs["hidden_states"][0][3])
+            # print("HIDDEN STATES[0][3][400]:",outputs["hidden_states"][0][3][1])
+            # print("HIDDEN STATES[0][3][401]:",outputs["hidden_states"][0][3][7])
+
+            stocazzofermati
+            # Save past state if it exists
+            # TODO: this needs to be fixed and made cleaner later.
+            if self.args.past_index >= 0:
+                self._past = outputs[self.args.past_index]
+
+            if labels is not None:
+                loss = self.label_smoother(outputs, labels)
+            else:
+                # We don't use .loss here since the model may return tuples instead of ModelOutput.
+                loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
+
+            return (loss, outputs) if return_outputs else loss
+
     # Initialize our Trainer
-    trainer = Trainer(
+    trainer = CustomTrainer(
         model=model,
         args=training_args,
         train_dataset=train_dataset if training_args.do_train else None,
@@ -534,5 +590,3 @@ def _mp_fn(index):
 
 if __name__ == "__main__":
     main()
-
-
