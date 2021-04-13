@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 import torch
 from datasets import load_dataset
-
+import json
 import transformers
 from transformers import (
     PretrainedConfig,
@@ -46,6 +46,8 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from regression import WordNodeRegression
+from utils import Config
+from dgn import GraphSageEmbeddingUnsup
 
 
 class BertConfigCustom(PretrainedConfig):
@@ -490,40 +492,34 @@ def main():
     # This one will take care of randomly masking the tokens.
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
+    # FULL FORWARD GRAPHSAGE
+    wordnet = torch.load("/data/medioli/wordnet/wordnet_ids.pt")
+    # Load configuration file
+    with open('config.json', 'r') as config_file:
+        config = json.load(config_file)
+    config = Config(config)
+    assert (config.dgn.embedding_size == config.embedding.hidden_size)
+    model = GraphSageEmbeddingUnsup(config)
+    model.load_state_dict(torch.load("/data/medioli/models/dgn/graphsage_w10/epoch50/model.pt"))
+    model.eval()
+    node_embeddings = model.full_forward(wordnet.x, wordnet.edge_index, 1)
+    node_dict = {}
+    for n, e in zip(wordnet.name, node_embeddings):
+        node_dict[n] = e
+    print(node_dict)
+
     class CustomTrainer(Trainer):
         def compute_loss(self, model, inputs, return_outputs=False):
             if self.label_smoother is not None and "labels" in inputs:
                 labels = inputs.pop("labels")
             else:
                 labels = None
-            # todo: qua aggiungi decode phase per ricavare trainining sentence to pair with node embedding
-            text_list = []
-            print()
-            print("INPUTS IDS[3]: ", len(inputs["input_ids"][3]))
-            print("STRING[3]:", inputs["input_ids"][3])
-            # print("STRING[3][400]:", tokenizer.decode(inputs["input_ids"][3]).split(" ")[1])
-            # print("STRING[3][401]:", tokenizer.decode(inputs["input_ids"][3]).split(" ")[7])
-            print()
+
             outputs = model(**inputs, output_hidden_states=True)
-            hidden_states = outputs["hidden_states"]
-            wnr = WordNodeRegression(inputs["input_ids"], hidden_states[0], tokenizer)
-            print("Number of layers:", len(hidden_states), "  (initial embeddings + 12 BERT layers)")
-            layer_i = 0
+            hidden_states = outputs["hidden_states"][0]
+            wnr = WordNodeRegression(noe_dict, tokenizer)
+            wnr.compute_batch_loss(inputs["input_ids"], hidden_states, tokenizer)
 
-            print("Number of batches:", len(hidden_states[layer_i]))
-            batch_i = 3
-
-            print("Number of tokens:", len(hidden_states[layer_i][batch_i]))
-            token_i = 0
-
-            print("Number of hidden units:", len(hidden_states[layer_i][batch_i][token_i]))
-
-            # print("HIDDEN STATES[0][3]:", len(outputs["hidden_states"][0][3]))
-            # print("HIDDEN STATES[0][3]:", outputs["hidden_states"][0][3])
-            # print("HIDDEN STATES[0][3][400]:",outputs["hidden_states"][0][3][1])
-            # print("HIDDEN STATES[0][3][401]:",outputs["hidden_states"][0][3][7])
-
-            stocazzofermati
             # Save past state if it exists
             # TODO: this needs to be fixed and made cleaner later.
             if self.args.past_index >= 0:
