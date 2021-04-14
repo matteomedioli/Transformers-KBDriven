@@ -499,10 +499,10 @@ def main():
         config = json.load(config_file)
     config = Config(config)
     assert (config.dgn.embedding_size == config.embedding.hidden_size)
-    model = GraphSageEmbeddingUnsup(config)
-    model.load_state_dict(torch.load("/data/medioli/models/dgn/graphsage_w10/epoch50/model.pt"))
-    model.eval()
-    node_embeddings = model.full_forward(wordnet.x, wordnet.edge_index, 1)
+    model_graph_sage = GraphSageEmbeddingUnsup(config)
+    model_graph_sage.load_state_dict(torch.load("/data/medioli/models/dgn/graphsage_w10/epoch50/model.pt"))
+    model_graph_sage.eval()
+    node_embeddings = model_graph_sage.full_forward(wordnet.x, wordnet.edge_index, 1)
     node_dict = {}
     for n, e in zip(wordnet.name, node_embeddings):
         node_dict[n] = e
