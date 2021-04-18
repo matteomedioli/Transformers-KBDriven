@@ -3,12 +3,44 @@ from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
-from utils import cuda_setup, plot_pca
+from utils import cuda_setup
 from torch_cluster import random_walk
 from torch_geometric.nn import SAGEConv
 from torch_geometric.data import NeighborSampler as RawNeighborSampler
+from nltk.corpus import wordnet as wn
 
 device = cuda_setup()
+
+
+class CustomBERTModel(nn.Module):
+    def __init__(self, bert_model, node_dict, tokenizer, compute_node_embeddings=True):
+        super(CustomBERTModel, self).__init__()
+        self.compute_node_embeddings = compute_node_embeddings
+        self.node_dict = node_dict
+        self.tokenizer = tokenizer
+        self.node = None
+
+        self.bert = bert_model
+        self.linear1 = nn.Linear(768, 256)
+        self.linear2 = nn.Linear(256, 3)
+
+    def forward(self, bert_inputs):
+        if self.compute_node_embeddings:
+            node_batch = []
+            for batch in self.input_ids:
+                words_node = []
+                for ids in batch:
+                    # synset_embedding = self.node_embeddings[wn.synsets(self.tokenizer.decode(ids))[0]]
+                    # words_node.append(synset_embedding)
+                    lemma_embedding = self.node_dict[wn.lemmas(self.tokenizer.decode(ids))[0]]
+                    words_node.append(lemma_embedding)
+                node_batch.append(words_node)
+            word_node_embeddings = torch.tensor(node_batch)
+        outputs = self.bert(**bert_inputs, output_hidden_states=True)
+        word_hidden_states = outputs["hidden_states"][0]
+        print(len(word_hidden_states))
+        print(len(word_node_embeddings))
+        return outputs
 
 
 class GraphSageEmbeddingUnsup(torch.nn.Module):
@@ -44,7 +76,8 @@ class WordnetEmbeddings(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.synset_embeddings = nn.Embedding(self.config.embedding.synset_vocab_size, self.config.embedding.hidden_size)
+        self.synset_embeddings = nn.Embedding(self.config.embedding.synset_vocab_size,
+                                              self.config.embedding.hidden_size)
         self.lemma_embeddings = nn.Embedding(self.config.embedding.lemma_vocab_size, self.config.embedding.hidden_size)
         self.pos_type_embeddings = nn.Embedding(self.config.embedding.pos_types, self.config.embedding.hidden_size)
         self.sense_embeddings = nn.Embedding(self.config.embedding.tot_sense, self.config.embedding.hidden_size)

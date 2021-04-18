@@ -47,7 +47,7 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from regression import WordNodeRegression
 from utils import Config
-from dgn import GraphSageEmbeddingUnsup
+from dgn import GraphSageEmbeddingUnsup, CustomBERTModel
 
 
 class BertConfigCustom(PretrainedConfig):
@@ -516,9 +516,6 @@ def main():
                 labels = None
 
             outputs = model(**inputs, output_hidden_states=True)
-            hidden_states = outputs["hidden_states"][0]
-            wnr = WordNodeRegression(noe_dict, tokenizer)
-            wnr.compute_batch_loss(inputs["input_ids"], hidden_states, tokenizer)
 
             # Save past state if it exists
             # TODO: this needs to be fixed and made cleaner later.
@@ -530,9 +527,13 @@ def main():
             else:
                 # We don't use .loss here since the model may return tuples instead of ModelOutput.
                 loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
-
+            print("STD Loss:", outputs["loss"])
+            if "regularization_loss" in outputs.keys():
+                print("REG Loss:", outputs["regularization_loss"])
+                loss += outputs["regularization_loss"]
             return (loss, outputs) if return_outputs else loss
 
+    model = CustomBERTModel(model, node_dict, tokenizer)
     # Initialize our Trainer
     trainer = CustomTrainer(
         model=model,
