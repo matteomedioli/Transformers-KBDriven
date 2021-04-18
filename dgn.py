@@ -8,6 +8,7 @@ from torch_cluster import random_walk
 from torch_geometric.nn import SAGEConv
 from torch_geometric.data import NeighborSampler as RawNeighborSampler
 from nltk.corpus import wordnet as wn
+import numpy as np
 
 device = cuda_setup()
 
@@ -24,22 +25,54 @@ class CustomBERTModel(nn.Module):
         self.linear1 = nn.Linear(768, 256)
         self.linear2 = nn.Linear(256, 3)
 
-    def forward(self, bert_inputs):
+    def forward(self,
+                input_ids=None,
+                attention_mask=None,
+                token_type_ids=None, 
+                position_ids=None,
+                head_mask=None,
+                inputs_embeds=None,
+                encoder_hidden_states=None,
+                labels=None,
+                output_attentions=None,
+                output_hidden_states=None,
+                return_dict=None):
         if self.compute_node_embeddings:
+            output_hidden_states = True
             node_batch = []
-            for batch in self.input_ids:
+            for batch in input_ids:
                 words_node = []
                 for ids in batch:
                     # synset_embedding = self.node_embeddings[wn.synsets(self.tokenizer.decode(ids))[0]]
                     # words_node.append(synset_embedding)
-                    lemma_embedding = self.node_dict[wn.lemmas(self.tokenizer.decode(ids))[0]]
-                    words_node.append(lemma_embedding)
-                node_batch.append(words_node)
-            word_node_embeddings = torch.tensor(node_batch)
-        outputs = self.bert(**bert_inputs, output_hidden_states=True)
+                    if wn.lemmas(self.tokenizer.decode(ids)):
+                        lemma_embedding = self.node_dict[str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2]]
+                        words_node.append(torch.tensor(lemma_embedding))
+                        # print(self.tokenizer.decode(ids), str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2], lemma_embedding)
+                    else:
+                        words_node.append(torch.zeros(768))
+                words_node_t = torch.stack(words_node)
+                print("WORDS_NODE_T", words_node_t.shape)
+                node_batch.append(words_node_t)
+            word_node_embeddings = torch.stack(node_batch)
+            print(word_node_embeddings.shape)
+        print(output_hidden_states) 
+        outputs = self.bert(input_ids,
+                            attention_mask, 
+                            token_type_ids, 
+                            position_ids, 
+                            head_mask,
+                            inputs_embeds,
+                            encoder_hidden_states,
+                            labels,
+                            output_attentions,
+                            output_hidden_states,
+                            return_dict)
+        # TODO: sa dio perchè torna loss None, chekc su hidden states da fare. Non mollare lesionato 
+        print(outputs)
         word_hidden_states = outputs["hidden_states"][0]
-        print(len(word_hidden_states))
-        print(len(word_node_embeddings))
+        print(word_hidden_states.shape)
+        print(word_node_embeddings.shape)
         return outputs
 
 
@@ -59,6 +92,14 @@ class GraphSageEmbeddingUnsup(torch.nn.Module):
         # plot_pca(pyg_graph.x.tolist(), colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
         node_embeddings = self.dgn(x, adjs)
         # plot_pca(node_embeddings, colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
+        return node_embeddings
+
+    def full_forward(self, x, edge_index, epoch):
+        input_ids = x
+        x = self.embedding(input_ids)
+        # plot_pca(pyg_graph.x.tolist(), colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
+        node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
+        # path = "/data/medioli/models/dgn/graphsage_w10/epoch" + str(epoch) + "/"
         return node_embeddings
 
     def full_forward(self, x, edge_index, epoch):

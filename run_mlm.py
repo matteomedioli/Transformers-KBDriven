@@ -48,7 +48,7 @@ from transformers.utils import check_min_version
 from regression import WordNodeRegression
 from utils import Config
 from dgn import GraphSageEmbeddingUnsup, CustomBERTModel
-
+from tqdm import tqdm
 
 class BertConfigCustom(PretrainedConfig):
     def __init__(
@@ -500,13 +500,20 @@ def main():
     config = Config(config)
     assert (config.dgn.embedding_size == config.embedding.hidden_size)
     model_graph_sage = GraphSageEmbeddingUnsup(config)
-    model_graph_sage.load_state_dict(torch.load("/data/medioli/models/dgn/graphsage_w10/epoch50/model.pt"))
+    model_graph_sage.load_state_dict(torch.load("/data/medioli/models/dgn/graphsage_w1_test_hidden/epoch25/model.pt"))
     model_graph_sage.eval()
-    node_embeddings = model_graph_sage.full_forward(wordnet.x, wordnet.edge_index, 1)
-    node_dict = {}
-    for n, e in zip(wordnet.name, node_embeddings):
-        node_dict[n] = e
-    print(node_dict)
+    if os.path.exists("/data/medioli/wordnet/node_dict_w1_e25.pt"):
+        node_dict = torch.load("/data/medioli/wordnet/node_dict_w1_e25.pt")
+        logger.info("NODE DICT Loaded")
+    else:
+        logger.info("START COMPUTING NODE DICT")
+        node_embeddings = model_graph_sage.full_forward(wordnet.x, wordnet.edge_index, 1)
+        node_dict = {}
+        for n, e in tqdm(zip(wordnet.name, node_embeddings), desc="Pairing wordnet names with node embeddings..."):
+            node_dict[n] = e
+        logger.info("END COMPUTING NODE DICT")
+        torch.save(node_dict, "/data/medioli/wordnet/node_dict_w1_e25.pt")
+        logger.info("NODE DICT Save to wordnet/node_dict_w1_e25.pt")
 
     class CustomTrainer(Trainer):
         def compute_loss(self, model, inputs, return_outputs=False):
@@ -532,9 +539,10 @@ def main():
                 print("REG Loss:", outputs["regularization_loss"])
                 loss += outputs["regularization_loss"]
             return (loss, outputs) if return_outputs else loss
-
+    logger.info("Custom Bert Initialization")
     model = CustomBERTModel(model, node_dict, tokenizer)
     # Initialize our Trainer
+    logger.info("Trainer Initialization")
     trainer = CustomTrainer(
         model=model,
         args=training_args,
