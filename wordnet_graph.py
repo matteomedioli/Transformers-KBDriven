@@ -13,6 +13,29 @@ import matplotlib.pyplot as plt
 import os
 from tqdm import tqdm
 
+relations_to_ids = {
+    'synset': 0,
+    'lemma': 1,
+    'hypernym': 2,
+    'hyponym': 3,
+    'antonym': 4,
+    'pertainym': 5,
+    'member_holonym': 6,
+    'member_meronym': 7,
+    'part_holonym': 8,
+    'part_meronym': 9,
+    'cause': 10,
+    'also_see': 11,
+    'derivationally_related_form': 12,
+    'entailment': 13,
+    'region_domain': 14,
+    'similar_tos': 15,
+    'substance_holonym': 16,
+    'substance_meronym': 17,
+    'topic_domain': 18,
+    'usage_domain': 19,
+    'verb_group': 20
+}
 
 class WordNetGraph:
     '''

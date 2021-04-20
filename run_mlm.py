@@ -47,8 +47,9 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from regression import WordNodeRegression
 from utils import Config
-from dgn import GraphSageEmbeddingUnsup, CustomBERTModel
+from dgn import GraphSageEmbeddingUnsup, BertForWordNodeRegression
 from tqdm import tqdm
+
 
 class BertConfigCustom(PretrainedConfig):
     def __init__(
@@ -539,8 +540,9 @@ def main():
                 print("REG Loss:", outputs["regularization_loss"])
                 loss += outputs["regularization_loss"]
             return (loss, outputs) if return_outputs else loss
+
     logger.info("Custom Bert Initialization")
-    model = CustomBERTModel(model, node_dict, tokenizer)
+    model = BertForWordNodeRegression(model, node_dict, tokenizer)
     # Initialize our Trainer
     logger.info("Trainer Initialization")
     trainer = CustomTrainer(

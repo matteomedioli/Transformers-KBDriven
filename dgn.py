@@ -13,9 +13,9 @@ import numpy as np
 device = cuda_setup()
 
 
-class CustomBERTModel(nn.Module):
+class BertForWordNodeRegression(nn.Module):
     def __init__(self, bert_model, node_dict, tokenizer, compute_node_embeddings=True):
-        super(CustomBERTModel, self).__init__()
+        super(BertForWordNodeRegression, self).__init__()
         self.compute_node_embeddings = compute_node_embeddings
         self.node_dict = node_dict
         self.tokenizer = tokenizer
@@ -28,7 +28,7 @@ class CustomBERTModel(nn.Module):
     def forward(self,
                 input_ids=None,
                 attention_mask=None,
-                token_type_ids=None, 
+                token_type_ids=None,
                 position_ids=None,
                 head_mask=None,
                 inputs_embeds=None,
@@ -48,31 +48,30 @@ class CustomBERTModel(nn.Module):
                     if wn.lemmas(self.tokenizer.decode(ids)):
                         lemma_embedding = self.node_dict[str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2]]
                         words_node.append(torch.tensor(lemma_embedding))
-                        # print(self.tokenizer.decode(ids), str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2], lemma_embedding)
+                        # print(self.tokenizer.decode(ids), str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2],
+                        # lemma_embedding)
                     else:
                         words_node.append(torch.zeros(768))
                 words_node_t = torch.stack(words_node)
-                print("WORDS_NODE_T", words_node_t.shape)
                 node_batch.append(words_node_t)
             word_node_embeddings = torch.stack(node_batch)
-            print(word_node_embeddings.shape)
-        print(output_hidden_states) 
-        outputs = self.bert(input_ids,
-                            attention_mask, 
-                            token_type_ids, 
-                            position_ids, 
-                            head_mask,
-                            inputs_embeds,
-                            encoder_hidden_states,
-                            labels,
-                            output_attentions,
-                            output_hidden_states,
-                            return_dict)
-        # TODO: sa dio perchè torna loss None, chekc su hidden states da fare. Non mollare lesionato 
-        print(outputs)
+            print("Node Embeddings Batch: ", word_node_embeddings.shape)
+
+        outputs = self.bert(input_ids=input_ids,
+                            attention_mask=attention_mask,
+                            token_type_ids=token_type_ids,
+                            position_ids=position_ids,
+                            head_mask=head_mask,
+                            inputs_embeds=inputs_embeds,
+                            encoder_hidden_states=encoder_hidden_states,
+                            labels=labels,
+                            output_attentions=output_attentions,
+                            output_hidden_states=output_hidden_states,
+                            return_dict=return_dict)
+
         word_hidden_states = outputs["hidden_states"][0]
-        print(word_hidden_states.shape)
-        print(word_node_embeddings.shape)
+        print("Word Embeddings Batch: ", word_hidden_states.shape)
+
         return outputs
 
 
