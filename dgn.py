@@ -70,9 +70,9 @@ class BertForWordNodeRegression(nn.Module):
                             return_dict=return_dict)
 
         word_hidden_states = outputs["hidden_states"][0]
-        regression_out = self.fc1(word_hidden_states)
+        regression_out = self.linear1(word_hidden_states)
         regression_out = self.sigmoid(regression_out)
-        regression_out = self.fc2(regression_out)
+        regression_out = self.linear2(regression_out)
         print(regression_out)
 
         return outputs
