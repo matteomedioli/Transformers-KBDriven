@@ -19,11 +19,12 @@ class BertForWordNodeRegression(nn.Module):
         self.compute_node_embeddings = compute_node_embeddings
         self.node_dict = node_dict
         self.tokenizer = tokenizer
-        self.node = None
 
         self.bert = bert_model
+
         self.linear1 = nn.Linear(768, 256)
-        self.linear2 = nn.Linear(256, 3)
+        self.sigmoid = nn.Sigmoid()
+        self.linear2 = nn.Linear(256, 768)
 
     def forward(self,
                 input_ids=None,
@@ -55,7 +56,6 @@ class BertForWordNodeRegression(nn.Module):
                 words_node_t = torch.stack(words_node)
                 node_batch.append(words_node_t)
             word_node_embeddings = torch.stack(node_batch)
-            print("Node Embeddings Batch: ", word_node_embeddings.shape)
 
         outputs = self.bert(input_ids=input_ids,
                             attention_mask=attention_mask,
@@ -70,7 +70,10 @@ class BertForWordNodeRegression(nn.Module):
                             return_dict=return_dict)
 
         word_hidden_states = outputs["hidden_states"][0]
-        print("Word Embeddings Batch: ", word_hidden_states.shape)
+        regression_out = self.fc1(word_hidden_states)
+        regression_out = self.sigmoid(regression_out)
+        regression_out = self.fc2(regression_out)
+        print(regression_out)
 
         return outputs
 
