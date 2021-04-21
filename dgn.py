@@ -39,6 +39,7 @@ class BertForWordNodeRegression(nn.Module):
                 output_hidden_states=None,
                 return_dict=None):
         if self.compute_node_embeddings:
+            
             output_hidden_states = True
             node_batch = []
             for batch in input_ids:
@@ -52,11 +53,11 @@ class BertForWordNodeRegression(nn.Module):
                         # print(self.tokenizer.decode(ids), str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2],
                         # lemma_embedding)
                     else:
-                        words_node.append(torch.zeros(768))
+                        words_node.append(torch.ones(768))
                 words_node_t = torch.stack(words_node)
                 node_batch.append(words_node_t)
             word_node_embeddings = torch.stack(node_batch)
-
+            
         outputs = self.bert(input_ids=input_ids,
                             attention_mask=attention_mask,
                             token_type_ids=token_type_ids,
@@ -73,8 +74,16 @@ class BertForWordNodeRegression(nn.Module):
         regression_out = self.linear1(word_hidden_states)
         regression_out = self.sigmoid(regression_out)
         regression_out = self.linear2(regression_out)
-        print(regression_out)
-
+        regression_index = []
+        for nodes_text_tensor in word_node_embeddings:
+            idx_word_with_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if not torch.eq(torch.sum(lemma_embedding),768)]
+            print(len(idx_word_with_node))
+            #print()
+        
+        #index_to_compare = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if not torch.eq(lemma_embedding, torch.zeros(768))]
+        #print(index_to_compare)
+        
+        
         return outputs
 
 

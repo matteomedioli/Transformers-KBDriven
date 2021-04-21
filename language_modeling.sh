@@ -2,7 +2,7 @@
 source /data/medioli/env/bin/activate
 export CUDA_LAUNCH_BLOCKING=1
 export TOKENIZERS_PARALLELISM=true
-export OMP_NUM_THREADS=64
+export OMP_NUM_THREADS=128
 # export CUDA_VISIBLE_DEVICES=2
 
 echo "[Training ${1} with tokenizer config ${2} on dataset ${3} with config ${4} for ${5} epochs]"
