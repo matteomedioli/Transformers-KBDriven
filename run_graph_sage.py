@@ -1,3 +1,5 @@
+from torch.optim import lr_scheduler
+
 from dgn import GraphSageEmbeddingUnsup, NeighborSampler
 import torch.nn.functional as F
 import torch
@@ -8,7 +10,7 @@ import os
 import json
 
 
-def train(model, x, loader):
+def train(model, x, loader, scheduler):
     model.train()
 
     total_loss = 0
@@ -16,18 +18,18 @@ def train(model, x, loader):
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         adjs = [adj.to(device) for adj in adjs]
         optimizer.zero_grad()
+        with torch.set_grad_enabled(True):
+            out = model(x[n_id], adjs)
+            out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
 
-        out = model(x[n_id], adjs)
-        out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
-
-        pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
-        neg_loss = F.logsigmoid(-(out * neg_out).sum(-1)).mean()
-        loss = -pos_loss - neg_loss
-        loss.backward()
-        optimizer.step()
+            pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
+            neg_loss = F.logsigmoid(-(out * neg_out).sum(-1)).mean()
+            loss = -pos_loss - neg_loss
+            loss.backward()
+            optimizer.step()
 
         total_loss += float(loss) * out.size(0)
-
+    scheduler.step()
     return total_loss / data.num_nodes
 
 
@@ -54,12 +56,12 @@ for layer in GS.modules():
 train_loader = NeighborSampler(data.edge_index, sizes=config.dgn.sizes, batch_size=config.dgn.batch_size,
                                shuffle=True, num_nodes=data.num_nodes)
 optimizer = torch.optim.Adam(GS.parameters(), lr=config.dgn.learning_rate)
-
+scheduler = lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.1)
 for epoch in range(1, 151):
-    train_loss = train(GS, data.x, train_loader)
+    train_loss = train(GS, data.x, train_loader, scheduler)
     print(f'Epoch: {epoch:03d}, Total GraphSage Loss: {train_loss:.4f}, ')
     if epoch in [1, 10, 25, 50, 75, 100, 125, 150]:
-        path = "/data/medioli/models/dgn/graphsage_w2/epoch"+str(epoch)+"/"
+        path = "/data/medioli/models/dgn/graphsage_w1/epoch"+str(epoch)+"/"
         if not os.path.exists(path):
             os.mkdir(path)
         torch.save(GS.state_dict(), path+"model.pt")

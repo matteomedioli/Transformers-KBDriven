@@ -9,12 +9,13 @@ from torch_geometric.nn import SAGEConv
 from torch_geometric.data import NeighborSampler as RawNeighborSampler
 from nltk.corpus import wordnet as wn
 import numpy as np
+from torch.utils.data import Dataset, DataLoader, random_split
 
 device = cuda_setup()
 
 
 class BertForWordNodeRegression(nn.Module):
-    def __init__(self, bert_model, node_dict, tokenizer, compute_node_embeddings=True):
+    def __init__(self, node_dict, tokenizer, bert_model, regression_model, compute_node_embeddings=True):
         super(BertForWordNodeRegression, self).__init__()
         self.compute_node_embeddings = compute_node_embeddings
         self.node_dict = node_dict
@@ -22,9 +23,7 @@ class BertForWordNodeRegression(nn.Module):
 
         self.bert = bert_model
 
-        self.linear1 = nn.Linear(768, 256)
-        self.sigmoid = nn.Sigmoid()
-        self.linear2 = nn.Linear(256, 768)
+        self.regression = regression_model
 
     def forward(self,
                 input_ids=None,
@@ -39,7 +38,7 @@ class BertForWordNodeRegression(nn.Module):
                 output_hidden_states=None,
                 return_dict=None):
         if self.compute_node_embeddings:
-            
+
             output_hidden_states = True
             node_batch = []
             for batch in input_ids:
@@ -57,7 +56,7 @@ class BertForWordNodeRegression(nn.Module):
                 words_node_t = torch.stack(words_node)
                 node_batch.append(words_node_t)
             word_node_embeddings = torch.stack(node_batch)
-            
+
         outputs = self.bert(input_ids=input_ids,
                             attention_mask=attention_mask,
                             token_type_ids=token_type_ids,
@@ -71,19 +70,18 @@ class BertForWordNodeRegression(nn.Module):
                             return_dict=return_dict)
 
         word_hidden_states = outputs["hidden_states"][0]
-        regression_out = self.linear1(word_hidden_states)
-        regression_out = self.sigmoid(regression_out)
-        regression_out = self.linear2(regression_out)
-        regression_index = []
         for nodes_text_tensor in word_node_embeddings:
-            idx_word_with_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if not torch.eq(torch.sum(lemma_embedding),768)]
-            print(len(idx_word_with_node))
-            #print()
-        
-        #index_to_compare = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if not torch.eq(lemma_embedding, torch.zeros(768))]
-        #print(index_to_compare)
-        
-        
+            idx_word_with_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if
+                                  not torch.eq(torch.sum(lemma_embedding), 768)]
+            idx_word_without_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if
+                                  not torch.eq(torch.sum(lemma_embedding), 768)]
+            print(idx_word_with_node[:20])
+            print(idx_word_without_node[:20])
+        regression_out = self.regression(word_hidden_states)
+
+        # index_to_compare = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if not torch.eq(lemma_embedding, torch.zeros(768))]
+        # print(index_to_compare)
+
         return outputs
 
 
@@ -121,6 +119,37 @@ class GraphSageEmbeddingUnsup(torch.nn.Module):
         # path = "/data/medioli/models/dgn/graphsage_w10/epoch" + str(epoch) + "/"
         # plot_pca(node_embeddings, colors=None, n_components=2, element_to_plot=150000, path=path)
         return node_embeddings
+
+
+class Regression(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, num_layers=2):
+        super(Regression, self).__init__()
+        self.num_layers = num_layers
+        # Iterable nn.Layers list
+        self.layers = nn.ModuleList()
+
+        for i in range(self.num_layers):
+            in_channels = input_size if i == 0 else hidden_size
+            out_channels = hidden_size if i != self.num_layers - 1 else output_size
+            # Linear Layer
+            self.layers.append(nn.Linear(in_channels, out_channels))
+            # Activation
+            if i != self.num_layers - 1:
+                self.layers.append(nn.LeakyReLU())
+                # Dropout if you want
+                # self.layers.append(nn.Dropout())
+            else:
+                self.layers.append(nn.LogSoftmax())
+
+    def forward(self, inputs):
+        x = inputs
+        for layer in self.layers:
+            x = layer(x)
+        return x
+
+    def info(self):
+        for layer in self.modules():
+            print(layer)
 
 
 class WordnetEmbeddings(nn.Module):

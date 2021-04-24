@@ -109,17 +109,19 @@ def plot_pca(X, colors=None, n_components=3, element_to_plot=5000, path=None):
                    pca_components[:element_to_plot, 2],
                    c=colors[:element_to_plot])
     print("Saving png...")
-    plt.savefig(path+"pca.png")
+    plt.savefig(path + "pca.png")
+
 
 def create_data_split(data, test_perc=0.1, val_perc=0.2):
     num_test = round(data.num_nodes * test_perc)
     num_val = round(data.num_nodes * val_perc)
-    data.train_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
-    data.val_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
-    data.test_mask = torch.zeros(data.num_nodes, dtype=torch.bool)
-    perm = torch.randperm(data.num_nodes)
-    t = data.num_nodes - (num_val + num_test)
-    data.train_mask[perm[:t]] = True
-    data.test_mask[perm[t:t+num_test]] = True
-    data.val_mask[perm[t+num_test:]] = True
-    return data
+    train_mask = torch.zeros(data.shape[0], dtype=torch.bool)
+    val_mask = torch.zeros(data.shape[0], dtype=torch.bool)
+    test_mask = torch.zeros(data.shape[0], dtype=torch.bool)
+    perm = torch.randperm(data.shape[0])
+    t = int(data.shape[0]) - (num_val + num_test)
+    train_mask[perm[:t]] = True
+    val_mask[perm[t:t + num_test]] = True
+    test_mask[perm[t + num_test:]] = True
+    return train_mask, val_mask, test_mask
+

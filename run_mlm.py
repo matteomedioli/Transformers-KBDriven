@@ -47,7 +47,7 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from regression import WordNodeRegression
 from utils import Config
-from dgn import GraphSageEmbeddingUnsup, BertForWordNodeRegression
+from dgn import GraphSageEmbeddingUnsup, BertForWordNodeRegression, Regression
 from tqdm import tqdm
 
 
@@ -542,7 +542,9 @@ def main():
             return (loss, outputs) if return_outputs else loss
 
     logger.info("Custom Bert Initialization")
-    model = BertForWordNodeRegression(model, node_dict, tokenizer)
+    regression_model = Regression(768, 256, 768)
+    regression_model.info()
+    model = BertForWordNodeRegression(node_dict, tokenizer, model, regression_model)
     # Initialize our Trainer
     logger.info("Trainer Initialization")
     trainer = CustomTrainer(
