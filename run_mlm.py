@@ -536,9 +536,6 @@ def main():
                 # We don't use .loss here since the model may return tuples instead of ModelOutput.
                 loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
             print("STD Loss:", outputs["loss"])
-            if "regularization_loss" in outputs.keys():
-                print("REG Loss:", outputs["regularization_loss"])
-                loss += outputs["regularization_loss"]
             return (loss, outputs) if return_outputs else loss
 
     logger.info("Custom Bert Initialization")
