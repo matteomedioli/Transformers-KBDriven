@@ -7,7 +7,7 @@ export OMP_NUM_THREADS=128
 
 echo "[Training ${1} with tokenizer config ${2} on dataset ${3} with config ${4} for ${5} epochs]"
 python3 -m torch.distributed.launch \
---nproc_per_node 2 run_mlm.py \
+--nproc_per_node 1 run_mlm.py \
 --dataset_name $3 \
 --tokenizer_name $2 \
 --model_type $1 \

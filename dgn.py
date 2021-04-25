@@ -36,7 +36,8 @@ class BertForWordNodeRegression(nn.Module):
                 labels=None,
                 output_attentions=None,
                 output_hidden_states=None,
-                return_dict=None):
+                return_dict=None,
+                regression_criterion = nn.BCELoss()):
         if self.compute_node_embeddings:
 
             output_hidden_states = True
@@ -70,18 +71,17 @@ class BertForWordNodeRegression(nn.Module):
                             return_dict=return_dict)
 
         word_hidden_states = outputs["hidden_states"][0]
+        regression_valid_idx = []
         for nodes_text_tensor in word_node_embeddings:
             idx_word_with_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if
                                   not torch.eq(torch.sum(lemma_embedding), 768)]
-            idx_word_without_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if
-                                  not torch.eq(torch.sum(lemma_embedding), 768)]
-            print(idx_word_with_node[:20])
-            print(idx_word_without_node[:20])
+            regression_valid_idx.append(idx_word_with_node)
+
         regression_out = self.regression(word_hidden_states)
-
-        # index_to_compare = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if not torch.eq(lemma_embedding, torch.zeros(768))]
-        # print(index_to_compare)
-
+        node_log_softmax = nn.Softmax().to(device)
+        regression_loss = regression_criterion(regression_out,node_log_softmax(word_node_embeddings.to(device)))
+        print(regression_loss)
+        
         return outputs
 
 
@@ -139,7 +139,7 @@ class Regression(nn.Module):
                 # Dropout if you want
                 # self.layers.append(nn.Dropout())
             else:
-                self.layers.append(nn.LogSoftmax())
+                self.layers.append(nn.Softmax())
 
     def forward(self, inputs):
         x = inputs
