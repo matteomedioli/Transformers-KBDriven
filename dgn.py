@@ -1,15 +1,20 @@
 import torch_geometric
-from torch_geometric.nn import global_mean_pool as gap, global_max_pool as gmp
+from torch_geometric.nn import GCNConv, global_mean_pool as gap, global_max_pool as gmp
+from torch_geometric.nn.conv.gcn_conv import gcn_norm
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
-from utils import cuda_setup
+from utils import cuda_setup, plot_pca
 from torch_cluster import random_walk
 from torch_geometric.nn import SAGEConv
 from torch_geometric.data import NeighborSampler as RawNeighborSampler
 from nltk.corpus import wordnet as wn
 import numpy as np
 from torch.utils.data import Dataset, DataLoader, random_split
+from typing import Optional, Tuple, Union
+from torch_geometric.typing import Adj, OptTensor, PairTensor, OptPairTensor
+import torch
+from torch import Tensor
 
 device = cuda_setup()
 
@@ -78,47 +83,37 @@ class BertForWordNodeRegression(nn.Module):
                 regression_valid_idx.append(idx_word_with_node)
 
             regression_out = self.regression(word_hidden_states)
-            node_log_softmax = nn.Softmax().to(device)
-            regression_loss = regression_criterion(regression_out,node_log_softmax(word_node_embeddings.to(device)))
+            
+            regression_loss = regression_criterion(regression_out, word_node_embeddings.to(device))
             print("REG LOSS: ", regression_loss)        
             outputs["loss"] = outputs["loss"] + regression_loss
         
         return outputs
 
 
-class GraphSageEmbeddingUnsup(torch.nn.Module):
+class WordNodeEmbedding(torch.nn.Module):
     def __init__(
             self,
-            config
+            config,
+            model_path
     ):
-        super(GraphSageEmbeddingUnsup, self).__init__()
+        super(WordNodeEmbedding, self).__init__()
         self.config = config
         self.embedding = WordnetEmbeddings(self.config)
         self.dgn = SAGE(self.config)
+        self.model_path=model_path   
 
-    def forward(self, x, adjs):
+    def forward(self, x, adjs, epoch):
         input_ids = x
         x = self.embedding(input_ids)
-        # plot_pca(pyg_graph.x.tolist(), colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
         node_embeddings = self.dgn(x, adjs)
-        # plot_pca(node_embeddings, colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
         return node_embeddings
 
     def full_forward(self, x, edge_index, epoch):
         input_ids = x
         x = self.embedding(input_ids)
-        # plot_pca(pyg_graph.x.tolist(), colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
         node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
-        # path = "/data/medioli/models/dgn/graphsage_w10/epoch" + str(epoch) + "/"
-        return node_embeddings
-
-    def full_forward(self, x, edge_index, epoch):
-        input_ids = x
-        x = self.embedding(input_ids)
-        # plot_pca(pyg_graph.x.tolist(), colors=pyg_graph.node_type, n_components=3, element_to_plot=5000)
-        node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
-        # path = "/data/medioli/models/dgn/graphsage_w10/epoch" + str(epoch) + "/"
-        # plot_pca(node_embeddings, colors=None, n_components=2, element_to_plot=150000, path=path)
+        plot_pca(node_embeddings, colors=None, n_components=2, element_to_plot=len(x), path=self.model_path, epoch=epoch)
         return node_embeddings
 
 
@@ -188,7 +183,7 @@ class NeighborSampler(RawNeighborSampler):
 
         # For each node in `batch`, we sample a direct neighbor (as positive
         # example) and a random node (as negative example):
-        pos_batch = random_walk(row, col, batch, walk_length=10,
+        pos_batch = random_walk(row, col, batch, walk_length=1,
                                 coalesced=False)[:, 1]
 
         neg_batch = torch.randint(0, self.adj_t.size(1), (batch.numel(),),
@@ -210,20 +205,63 @@ class SAGE(nn.Module):
 
     def forward(self, x, adjs):
         for i, (edge_index, _, size) in enumerate(adjs):
-            x_target = x[:size[1]]  # Target nodes are always placed first.
+            x_target = x[:size[1]]  # Maybe we can add x_target as graphSage for GCNConv?
             x = self.convs[i]((x, x_target), edge_index)
             if i != self.num_layers - 1:
                 x = x.relu()
                 x = F.dropout(x, p=self.config.sage.dropout, training=self.training)
-        return x
+        return x 
 
     def full_forward(self, x, edge_index):
         for i, conv in enumerate(self.convs):
+            x_target = None
             x = conv(x, edge_index)
             if i != self.num_layers - 1:
                 x = x.relu()
                 x = F.dropout(x, p=self.config.sage.dropout, training=self.training)
         return x
+
+
+class GCNConvSage(GCNConv):
+    def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj,
+                edge_weight: OptTensor = None) -> Tensor:
+        """"""
+
+        if self.normalize:
+            
+            if isinstance(edge_index, Tensor):
+                cache = self._cached_edge_index
+                if cache is None:
+                    edge_index, edge_weight = gcn_norm(  # yapf: disable
+                        edge_index, edge_weight, x[0].size(self.node_dim),
+                        self.improved, self.add_self_loops, dtype=x[0].dtype)
+                    if self.cached:
+                        self._cached_edge_index = (edge_index, edge_weight)
+                else:
+                    edge_index, edge_weight = cache[0], cache[1]
+
+            elif isinstance(edge_index, SparseTensor):
+                cache = self._cached_adj_t
+                if cache is None:
+                    edge_index = gcn_norm(  # yapf: disable
+                        edge_index, edge_weight, x[0].size(self.node_dim),
+                        self.improved, self.add_self_loops, dtype=x[0].dtype)
+                    if self.cached:
+                        self._cached_adj_t = edge_index
+                else:
+                    edge_index = cache
+
+        x[0] = torch.matmul(x[0], self.weight)
+
+        # propagate_type: (x: Tensor, edge_weight: OptTensor)
+        out = self.propagate(edge_index, x=x[0], edge_weight=edge_weight,
+                             size=None)
+        x_target = x[1]
+        # self.lin_l = nn.Linear(out.shape[1], self.out_channels, bias=True)
+        # self.lin_r = nn.Linear(x_target.shape[1], self.out_channels, bias=False)
+        # out = self.lin_r(x)
+        # out += self.lin_l(x_target)
+        return F.log_softmax(out)
 
 
 class DGN(nn.Module):
@@ -269,18 +307,18 @@ class DGN(nn.Module):
         else:
             self.dropout = None
 
-    def forward(self, x, pyg_graph, batch=None):
+    def forward(self, x, edge_index, batch=None):
         if batch is None:
             batch = torch.zeros(x.shape[0]).long().to(device)
         graph_embeddings = torch.zeros(1, 2 * self.out_dim).to(device)  # 2 gap + gmp = 128 + 128
         if self.dropout:
             x = self.dropout(x)
         for l in self.layers:
-            x = self.act(l(x, pyg_graph.edge_index))
+            x = self.act(l(x, edge_index))
             x_i = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
             graph_embeddings += x_i
         if self.bn:
             x = self.bn(x)
         node_embeddings = x
-        print(node_embeddings.shape, graph_embeddings.shape)
-        return node_embeddings.detach(), graph_embeddings.detach()
+
+        return node_embeddings, graph_embeddings
