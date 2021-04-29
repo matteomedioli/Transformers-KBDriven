@@ -2,6 +2,7 @@ from torch.optim import lr_scheduler
 
 from dgn import WordNodeEmbedding, NeighborSampler
 import torch.nn.functional as F
+import torch.nn as nn
 import torch
 import time
 from datetime import datetime
@@ -10,30 +11,26 @@ import os
 import json
 
 
-def train(model, x, loader, scheduler, epoch):
-    model.train()
+def train(x, epoch):
+    DGN.train()
 
     total_loss = 0
-    for batch_size, n_id, adjs in loader:
+    for batch_size, n_id, adjs in train_loader:
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
-        
         adjs = [adj.to(device) for adj in adjs]
         optimizer.zero_grad()
-        with torch.set_grad_enabled(True):
-            out = model(x[n_id], adjs, epoch)
-            out_split = out.split(out.size(0) // 3, dim=0)
-            out = out_split[0]
-            pos_out = out_split[1]
-            neg_out = out_split[2]
 
-            pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
-            neg_loss = F.logsigmoid(-(out * neg_out).sum(-1)).mean()
-            loss = -pos_loss - neg_loss
-            loss.backward()
-            optimizer.step()
+        out = DGN(x[n_id], adjs, epoch)
+        out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
+
+        pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
+        neg_loss = F.logsigmoid(-(out * neg_out).sum(-1)).mean()
+        loss = -pos_loss - neg_loss
+        loss.backward()
+        optimizer.step()
 
         total_loss += float(loss) * out.size(0)
-    scheduler.step()
+
     return total_loss / data.num_nodes
 
 
@@ -60,16 +57,16 @@ for layer in DGN.modules():
 train_loader = NeighborSampler(data.edge_index, sizes=config.dgn.sizes, batch_size=config.dgn.batch_size,
                                shuffle=True, num_nodes=data.num_nodes)
 
+nn.init.kaiming_uniform_(DGN.parameters(), mode='fan_in', nonlinearity='relu')
 optimizer = torch.optim.Adam(DGN.parameters(), lr=config.dgn.learning_rate)
 scheduler = lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.1)
 
 for epoch in range(1, 151):
-    train_loss = train(DGN, data.x, train_loader, scheduler, epoch)
+    train_loss = train(data.x, epoch)
     print(f'Epoch: {epoch:03d}, Loss: {train_loss:.4f}')
-    if epoch in [1, 10, 25, 50, 75, 100, 125, 150]:
-        path = dgn_path
-        if not os.path.exists(path):
-            os.mkdir(path)
-        torch.save(DGN.state_dict(), path+str(epoch)+"e_model.pt")
-        DGN.eval()
-        DGN.full_forward(data.x, data.edge_index, epoch)
+    path = dgn_path
+    if not os.path.exists(path):
+        os.mkdir(path)
+    torch.save(DGN.state_dict(), path+str(epoch)+"e_model.pt")
+    DGN.eval()
+    DGN.full_forward(data.x, data.edge_index, epoch)
