@@ -101,13 +101,13 @@ def plot_pca(X, colors=None, n_components=3, element_to_plot=5000, path=None, ep
     if n_components == 2:
         plt.scatter(pca_components[:element_to_plot, 0],
                     pca_components[:element_to_plot, 1],
-                    c=colors[:element_to_plot])
+                    c=colors[:element_to_plot], s = 1, marker='x')
     elif n_components == 3:
         ax = fig.add_subplot(111, projection='3d')
         ax.scatter(pca_components[:element_to_plot, 0],
                    pca_components[:element_to_plot, 1],
                    pca_components[:element_to_plot, 2],
-                   c=colors[:element_to_plot])
+                   c=colors[:element_to_plot], s = 1, marker='x')
     print("Saving png...")
     plt.savefig(path + str(epoch) + "e_pca.png")
 

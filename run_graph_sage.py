@@ -1,6 +1,4 @@
-from torch.optim import lr_scheduler
-
-from dgn import WordNodeEmbedding, NeighborSampler
+from dgn import WordnetDGN, NeighborSampler, weight_init
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
@@ -49,17 +47,22 @@ assert (config.dgn.embedding_size == config.embedding.hidden_size)
 
 dgn_path = "/data/medioli/models/dgn/graphsage/"
 # Init main Model
-DGN = WordNodeEmbedding(config, dgn_path)
+DGN = WordnetDGN(config, dgn_path)
 DGN = DGN.to(device)
 for layer in DGN.modules():
     print(layer)
 
+DGN.apply(weight_init)
+
 train_loader = NeighborSampler(data.edge_index, sizes=config.dgn.sizes, batch_size=config.dgn.batch_size,
                                shuffle=True, num_nodes=data.num_nodes)
 
-nn.init.kaiming_uniform_(DGN.parameters(), mode='fan_in', nonlinearity='relu')
 optimizer = torch.optim.Adam(DGN.parameters(), lr=config.dgn.learning_rate)
-scheduler = lr_scheduler.StepLR(optimizer, step_size=50, gamma=0.1)
+
+node_root_colors = [x.split(".")[0] for x in data.node_names]
+set_node_root = set(node_root_colors)
+name_id_map = {name:i for i, name in enumerate(set_node_root)}
+node_root_colors_id = [name_id_map[x] for x in node_root_colors]
 
 for epoch in range(1, 151):
     train_loss = train(data.x, epoch)
@@ -69,4 +72,4 @@ for epoch in range(1, 151):
         os.mkdir(path)
     torch.save(DGN.state_dict(), path+str(epoch)+"e_model.pt")
     DGN.eval()
-    DGN.full_forward(data.x, data.edge_index, epoch)
+    DGN.full_forward(data.x, data.edge_index, node_root_colors_id, epoch)

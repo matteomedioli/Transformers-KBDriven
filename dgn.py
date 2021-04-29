@@ -19,6 +19,16 @@ from torch import Tensor
 device = cuda_setup()
 
 
+def weight_init(m):
+    if isinstance(m, SAGEConv):
+        nn.init.xavier_normal_(m.lin_l.weight, gain=nn.init.calculate_gain('relu'))
+        nn.init.xavier_normal_(m.lin_l.weight, gain=nn.init.calculate_gain('relu'))        
+    elif isinstance(m, nn.Linear):
+        nn.init.xavier_normal_(m.weight)
+    elif isinstance(m, nn.Embedding):
+        nn.init.xavier_normal_(m.weight)
+
+
 class BertForWordNodeRegression(nn.Module):
     def __init__(self, node_dict, tokenizer, bert_model, regression_model, graph_regularization=True):
         super(BertForWordNodeRegression, self).__init__()
@@ -91,13 +101,13 @@ class BertForWordNodeRegression(nn.Module):
         return outputs
 
 
-class WordNodeEmbedding(torch.nn.Module):
+class WordnetDGN(torch.nn.Module):
     def __init__(
             self,
             config,
             model_path
     ):
-        super(WordNodeEmbedding, self).__init__()
+        super(WordnetDGN, self).__init__()
         self.config = config
         self.embedding = WordnetEmbeddings(self.config)
         self.dgn = SAGE(self.config)
@@ -109,11 +119,11 @@ class WordNodeEmbedding(torch.nn.Module):
         node_embeddings = self.dgn(x, adjs)
         return node_embeddings
 
-    def full_forward(self, x, edge_index, epoch):
+    def full_forward(self, x, edge_index, node_root_colors, epoch):
         input_ids = x
         x = self.embedding(input_ids)
         node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
-        plot_pca(node_embeddings, colors=None, n_components=2, element_to_plot=len(x), path=self.model_path, epoch=epoch)
+        plot_pca(node_embeddings, node_root_colors, n_components=3, element_to_plot=300000, path=self.model_path, epoch=epoch)
         return node_embeddings
 
 
