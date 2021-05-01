@@ -51,7 +51,7 @@ class BertForWordNodeRegression(nn.Module):
                 output_attentions=None,
                 output_hidden_states=None,
                 return_dict=None,
-                regression_criterion=nn.BCELoss()):
+                regression_criterion=nn.MSELoss()):
         if self.graph_regularization:
 
             output_hidden_states = True
