@@ -1,12 +1,11 @@
 import torch_geometric
-from torch_geometric.nn import GCNConv, global_mean_pool as gap, global_max_pool as gmp
+from torch_geometric.nn import GCNConv, GATConv, SAGEConv, TopKPooling, global_mean_pool as gap, global_max_pool as gmp
 from torch_geometric.nn.conv.gcn_conv import gcn_norm
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
 from utils import cuda_setup, plot_pca
 from torch_cluster import random_walk
-from torch_geometric.nn import SAGEConv
 from torch_geometric.data import NeighborSampler as RawNeighborSampler
 from nltk.corpus import wordnet as wn
 import numpy as np
@@ -22,7 +21,7 @@ device = cuda_setup()
 def weight_init(m):
     if isinstance(m, SAGEConv):
         nn.init.xavier_normal_(m.lin_l.weight, gain=nn.init.calculate_gain('relu'))
-        nn.init.xavier_normal_(m.lin_l.weight, gain=nn.init.calculate_gain('relu'))        
+        nn.init.xavier_normal_(m.lin_l.weight, gain=nn.init.calculate_gain('relu'))
     elif isinstance(m, nn.Linear):
         nn.init.xavier_normal_(m.weight)
     elif isinstance(m, nn.Embedding):
@@ -52,7 +51,7 @@ class BertForWordNodeRegression(nn.Module):
                 output_attentions=None,
                 output_hidden_states=None,
                 return_dict=None,
-                regression_criterion = nn.BCELoss()):
+                regression_criterion=nn.BCELoss()):
         if self.graph_regularization:
 
             output_hidden_states = True
@@ -89,15 +88,15 @@ class BertForWordNodeRegression(nn.Module):
             regression_valid_idx = []
             for nodes_text_tensor in word_node_embeddings:
                 idx_word_with_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if
-                                  not torch.eq(torch.sum(lemma_embedding), 768)]
+                                      not torch.eq(torch.sum(lemma_embedding), 768)]
                 regression_valid_idx.append(idx_word_with_node)
 
             regression_out = self.regression(word_hidden_states)
-            
+
             regression_loss = regression_criterion(regression_out, word_node_embeddings.to(device))
-            print("REG LOSS: ", regression_loss)        
+            print("REG LOSS: ", regression_loss)
             outputs["loss"] = outputs["loss"] + regression_loss
-        
+
         return outputs
 
 
@@ -110,8 +109,8 @@ class WordnetDGN(torch.nn.Module):
         super(WordnetDGN, self).__init__()
         self.config = config
         self.embedding = WordnetEmbeddings(self.config)
-        self.dgn = SAGE(self.config)
-        self.model_path=model_path   
+        self.dgn = ConvDGN(self.config)
+        self.model_path = model_path
 
     def forward(self, x, adjs, epoch):
         input_ids = x
@@ -123,7 +122,8 @@ class WordnetDGN(torch.nn.Module):
         input_ids = x
         x = self.embedding(input_ids)
         node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
-        plot_pca(node_embeddings, node_root_colors, n_components=3, element_to_plot=300000, path=self.model_path, epoch=epoch)
+        plot_pca(node_embeddings, node_root_colors, n_components=3, element_to_plot=300000, path=self.model_path,
+                 epoch=epoch)
         return node_embeddings
 
 
@@ -220,7 +220,7 @@ class SAGE(nn.Module):
             if i != self.num_layers - 1:
                 x = x.relu()
                 x = F.dropout(x, p=self.config.sage.dropout, training=self.training)
-        return x 
+        return x
 
     def full_forward(self, x, edge_index):
         for i, conv in enumerate(self.convs):
@@ -232,103 +232,48 @@ class SAGE(nn.Module):
         return x
 
 
-class GCNConvSage(GCNConv):
-    def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj,
-                edge_weight: OptTensor = None) -> Tensor:
-        """"""
-
-        if self.normalize:
-            
-            if isinstance(edge_index, Tensor):
-                cache = self._cached_edge_index
-                if cache is None:
-                    edge_index, edge_weight = gcn_norm(  # yapf: disable
-                        edge_index, edge_weight, x[0].size(self.node_dim),
-                        self.improved, self.add_self_loops, dtype=x[0].dtype)
-                    if self.cached:
-                        self._cached_edge_index = (edge_index, edge_weight)
-                else:
-                    edge_index, edge_weight = cache[0], cache[1]
-
-            elif isinstance(edge_index, SparseTensor):
-                cache = self._cached_adj_t
-                if cache is None:
-                    edge_index = gcn_norm(  # yapf: disable
-                        edge_index, edge_weight, x[0].size(self.node_dim),
-                        self.improved, self.add_self_loops, dtype=x[0].dtype)
-                    if self.cached:
-                        self._cached_adj_t = edge_index
-                else:
-                    edge_index = cache
-
-        x[0] = torch.matmul(x[0], self.weight)
-
-        # propagate_type: (x: Tensor, edge_weight: OptTensor)
-        out = self.propagate(edge_index, x=x[0], edge_weight=edge_weight,
-                             size=None)
-        x_target = x[1]
-        # self.lin_l = nn.Linear(out.shape[1], self.out_channels, bias=True)
-        # self.lin_r = nn.Linear(x_target.shape[1], self.out_channels, bias=False)
-        # out = self.lin_r(x)
-        # out += self.lin_l(x_target)
-        return F.log_softmax(out)
-
-
-class DGN(nn.Module):
+class ConvDGN(nn.Module):
     def __init__(self, config):
-        super(DGN, self).__init__()
+        super(ConvDGN, self).__init__()
 
         self.in_dim = config.embedding.hidden_size
         self.out_dim = config.dgn.embedding_size
         self.type = config.dgn.type
 
-        if self.type == 'gcn':
+        if self.type == "gcn":
             builderName = "GCNConv"
-        elif self.type == 'gat':
-            builderName = "GCNConv"
+        elif self.type == "gat":
+            builderName = "GATConv"
+        elif self.type == "sage":
+            builderName = "SAGEConv"
         else:
             raise ValueError(
                 'Unknown node embedding layer type {}'.format(type))
 
         targetClass = getattr(torch_geometric.nn, builderName)
 
-        self.layers = nn.ModuleList()
+        self.conv_layers = nn.ModuleList()
         self.act = F.relu
+        self.dropout = F.dropout
+        self.num_conv = 0
 
         if not config.dgn.hidden_sizes_list:
-            layer_instance = targetClass(self.in_dim, self.out_dim)
-            self.layers.append(layer_instance)
+            conv_layer_instance = targetClass(self.in_dim, self.out_dim)
+            self.conv_layers.append(conv_layer_instance)
+            self.num_conv += 1
         else:
-            layer_instance = targetClass(self.in_dim, config.dgn.hidden_sizes_list[0])
-            self.layers.append(layer_instance)
+            conv_layer_instance = targetClass(self.in_dim, config.dgn.hidden_sizes_list[0])
+            self.conv_layers.append(conv_layer_instance)
             for i in range(len(config.dgn.hidden_sizes_list) - 1):
                 in_dim = config.dgn.hidden_sizes_list[i]
                 out_dim = config.dgn.hidden_sizes_list[i + 1]
-                layer_instance = targetClass(in_dim, out_dim)
-                self.layers.append(layer_instance)
+                conv_layer_instance = targetClass(in_dim, out_dim)
+                self.conv_layers.append(conv_layer_instance)
+                self.num_conv += 1
 
-        if config.dgn.batch_norm:
-            self.bn = torch.nn.BatchNorm1d(self.out_dim)
-        else:
-            self.bn = None
-
-        if config.dgn.dropout:
-            self.dropout = torch.nn.Dropout()
-        else:
-            self.dropout = None
-
-    def forward(self, x, edge_index, batch=None):
-        if batch is None:
-            batch = torch.zeros(x.shape[0]).long().to(device)
-        graph_embeddings = torch.zeros(1, 2 * self.out_dim).to(device)  # 2 gap + gmp = 128 + 128
-        if self.dropout:
-            x = self.dropout(x)
-        for l in self.layers:
-            x = self.act(l(x, edge_index))
-            x_i = torch.cat([gmp(x, batch), gap(x, batch)], dim=1)
-            graph_embeddings += x_i
-        if self.bn:
-            x = self.bn(x)
-        node_embeddings = x
-
-        return node_embeddings, graph_embeddings
+    def forward(self, x, edge_index, edge_weights):
+        for i, conv in enumerate(self.conv_layers):
+            x = self.act(conv(x, edge_index, edge_weights))
+            if i != self.num_conv - 1:
+                x = self.dropout(x, training=self.training)
+        return x
