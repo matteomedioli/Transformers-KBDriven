@@ -112,7 +112,7 @@ class WordnetDGN(torch.nn.Module):
         self.dgn = ConvDGN(self.config)
         self.model_path = model_path
 
-    def forward(self, x, adjs, epoch):
+    def forward(self, x, adjs):
         input_ids = x
         x = self.embedding(input_ids)
         node_embeddings = self.dgn(x, adjs)
