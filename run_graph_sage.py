@@ -9,7 +9,7 @@ import os
 import json
 
 
-def train(x, epoch):
+def train(x, edge_attrs):
     DGN.train()
 
     total_loss = 0
@@ -18,7 +18,7 @@ def train(x, epoch):
         adjs = [adj.to(device) for adj in adjs]
         optimizer.zero_grad()
 
-        out = DGN(x[n_id], adjs, epoch)
+        out = DGN(x[n_id], adjs)
         out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
 
         pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
@@ -65,7 +65,7 @@ name_id_map = {name:i for i, name in enumerate(set_node_root)}
 node_root_colors_id = [name_id_map[x] for x in node_root_colors]
 
 for epoch in range(1, 151):
-    train_loss = train(data.x, epoch)
+    train_loss = train(data.x, data.edge_attrs)
     print(f'Epoch: {epoch:03d}, Loss: {train_loss:.4f}')
     path = dgn_path
     if not os.path.exists(path):

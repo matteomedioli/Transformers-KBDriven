@@ -172,7 +172,7 @@ class WordnetEmbeddings(nn.Module):
         # self.LayerNorm is not snake-cased to stick with TensorFlow model variable name and be able to load
         # any TensorFlow checkpoint file
         self.LayerNorm = nn.LayerNorm(self.config.embedding.hidden_size, eps=self.config.embedding.layer_norm_eps)
-        self.dropout = nn.Dropout(self.config.embedding.hidden_dropout_prob)
+        self.dropout = F.dropout
 
     def forward(self, x):
         synset_embeds = self.synset_embeddings(x[:, 0])
@@ -182,7 +182,7 @@ class WordnetEmbeddings(nn.Module):
         embeddings = synset_embeds + lemma_embeds
         embeddings += (pos_embeds + sense_embeds)
         embeddings = self.LayerNorm(embeddings)
-        embeddings = self.dropout(embeddings)
+        embeddings = self.dropout(embeddings, training=self.training)
         return embeddings
 
 
@@ -271,7 +271,7 @@ class ConvDGN(nn.Module):
                 self.conv_layers.append(conv_layer_instance)
                 self.num_conv += 1
 
-    def forward(self, x, edge_index, edge_weights):
+    def forward(self, x, edge_index, edge_weights=None):
         for i, conv in enumerate(self.conv_layers):
             x = self.act(conv(x, edge_index, edge_weights))
             if i != self.num_conv - 1:
