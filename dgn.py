@@ -275,7 +275,6 @@ class ConvDGN(nn.Module):
                 self.num_conv += 1
 
     def forward(self, x, edge_index, edge_weights=None):
-
         for i, (edge_index, _, size) in enumerate(adjs):
             x_target = x[:size[1]]  # Maybe we can add x_target as graphSage for GCNConv?
             x = self.conv_layers[i]((x, x_target), edge_index)
