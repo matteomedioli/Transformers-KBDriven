@@ -1,6 +1,6 @@
 {
   "embedding": {
-    "hidden_size": 256,
+    "hidden_size": 128,
     "synset_vocab_size": 86572,
     "lemma_vocab_size": 148700,
     "pos_types": 6,
@@ -10,14 +10,13 @@
   },
     "dgn": {
       "type": "sage",
-      "embedding_size": 256,
-      "hidden_sizes_list": [128, 128, 128],
-      "learning_rate": 0.01,
+      "embedding_size": 128,
+      "hidden_sizes_list": [128, 64, 64],
+      "learning_rate": 0.0001,
       "batch_size": 256,
       "sizes" : [15,10,5]
   },
   "sage": {
-    "hidden_channels": 64,
     "num_layers": 2,
     "dropout": 0.5
   }

@@ -120,15 +120,16 @@ class WordnetDGN(torch.nn.Module):
         input_ids = x
         x = self.embedding(input_ids)
         node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
-        plot_pca(node_embeddings, node_root_colors, n_components=3, element_to_plot=300000, path=self.model_path,
-                 epoch=epoch)
+        if epoch > 0:
+            plot_pca(node_embeddings, node_root_colors, n_components=3, element_to_plot=300000, path=self.model_path,
+                     epoch=epoch)
         return node_embeddings
 
     def reset_parameters(self):
         self.dgn.reset_parameters()
 
 
-class Regression(nn.Module):
+class Regression_old(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_layers=2):
         super(Regression, self).__init__()
         self.num_layers = num_layers
@@ -152,6 +153,21 @@ class Regression(nn.Module):
         x = inputs
         for layer in self.layers:
             x = layer(x)
+        return x
+
+    def info(self):
+        for layer in self.modules():
+            print(layer)
+
+class Regression(nn.Module):
+    def __init__(self, n_feature, n_hidden, n_output):
+        super(Regression, self).__init__()
+        self.hidden = nn.Linear(n_feature, n_hidden)   # hidden layer
+        self.predict =nn.Linear(n_hidden, n_output)   # output layer
+
+    def forward(self, x):
+        x = F.leaky_relu(self.hidden(x))      # activation function for hidden layer
+        x = self.predict(x)             # linear output
         return x
 
     def info(self):
@@ -252,7 +268,7 @@ class ConvDGN(nn.Module):
         return x
 
     def full_forward(self, x, edge_index):
-        for i, conv in enumerate(self.convs):
+        for i, conv in enumerate(self.conv_layers):
             x = conv(x, edge_index)
             if i != self.num_conv - 1:
                 x = x.relu()
