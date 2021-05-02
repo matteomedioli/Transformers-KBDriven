@@ -108,6 +108,7 @@ class WordnetDGN(torch.nn.Module):
         self.embedding = WordnetEmbeddings(self.config)
         self.dgn = ConvDGN(self.config)
         self.model_path = model_path
+        self.reset_parameters()
 
     def forward(self, x, adjs):
         input_ids = x
@@ -124,7 +125,7 @@ class WordnetDGN(torch.nn.Module):
         return node_embeddings
 
     def reset_parameters(self):
-        self.apply(weight_init)
+        self.dgn.reset_parameters()
 
 
 class Regression(nn.Module):
@@ -257,6 +258,10 @@ class ConvDGN(nn.Module):
                 x = x.relu()
                 x = F.dropout(x, p=0.5, training=self.training)
         return x
+
+    def reset_parameters(self):
+        for conv in self.conv_layers:
+            conv.reset_parameters()
 
 
 class NNConv(MessagePassing):
