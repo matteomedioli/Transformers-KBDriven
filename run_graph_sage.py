@@ -55,13 +55,13 @@ for layer in DGN.modules():
 DGN.apply(weight_init)
 
 train_loader = NeighborSampler(data.edge_index, sizes=config.dgn.sizes, batch_size=config.dgn.batch_size,
-                               shuffle=True, num_nodes=data.num_nodes)
+                               shuffle=True, num_nodes=data.num_nodes, num_workers=12)
 
 optimizer = torch.optim.Adam(DGN.parameters(), lr=config.dgn.learning_rate)
 
 node_root_colors = [x.split(".")[0] for x in data.node_names]
 set_node_root = set(node_root_colors)
-name_id_map = {name:i for i, name in enumerate(set_node_root)}
+name_id_map = {name: i for i, name in enumerate(set_node_root)}
 node_root_colors_id = [name_id_map[x] for x in node_root_colors]
 
 for epoch in range(1, 151):
@@ -70,6 +70,6 @@ for epoch in range(1, 151):
     path = dgn_path
     if not os.path.exists(path):
         os.mkdir(path)
-    torch.save(DGN.state_dict(), path+str(epoch)+"e_model.pt")
+    torch.save(DGN.state_dict(), path + str(epoch) + "e_model.pt")
     DGN.eval()
     DGN.full_forward(data.x, data.edge_index, node_root_colors_id, epoch)
