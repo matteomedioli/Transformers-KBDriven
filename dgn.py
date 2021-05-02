@@ -22,13 +22,7 @@ device = cuda_setup()
 
 
 def weight_init(m):
-    if isinstance(m, SAGEConv):
-        nn.init.xavier_normal_(m.lin_l.weight, gain=nn.init.calculate_gain('relu'))
-        nn.init.xavier_normal_(m.lin_l.weight, gain=nn.init.calculate_gain('relu'))
-    elif isinstance(m, nn.Linear):
-        nn.init.xavier_normal_(m.weight)
-    elif isinstance(m, nn.Embedding):
-        nn.init.xavier_normal_(m.weight)
+    m.reset_parameters()
 
 
 class BertForWordNodeRegression(nn.Module):
@@ -129,6 +123,9 @@ class WordnetDGN(torch.nn.Module):
                  epoch=epoch)
         return node_embeddings
 
+    def reset_parameters(self):
+        self.apply(weight_init)
+
 
 class Regression(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_layers=2):
@@ -206,35 +203,6 @@ class NeighborSampler(RawNeighborSampler):
         return super(NeighborSampler, self).sample(batch)
 
 
-class SAGE(nn.Module):
-    def __init__(self, config):
-        super(SAGE, self).__init__()
-        self.config = config
-        self.num_layers = self.config.sage.num_layers
-        self.convs = nn.ModuleList()
-        for i in range(self.num_layers):
-            in_channels = self.config.embedding.hidden_size if i == 0 else self.config.sage.hidden_channels
-            self.convs.append(SAGEConv(in_channels, self.config.sage.hidden_channels))
-
-    def forward(self, x, adjs):
-        for i, (edge_index, _, size) in enumerate(adjs):
-            x_target = x[:size[1]]  # Maybe we can add x_target as graphSage for GCNConv?
-            x = self.convs[i]((x, x_target), edge_index)
-            if i != self.num_layers - 1:
-                x = x.relu()
-                x = F.dropout(x, p=self.config.sage.dropout, training=self.training)
-        return x
-
-    def full_forward(self, x, edge_index):
-        for i, conv in enumerate(self.convs):
-            x_target = None
-            x = conv(x, edge_index)
-            if i != self.num_layers - 1:
-                x = x.relu()
-                x = F.dropout(x, p=self.config.sage.dropout, training=self.training)
-        return x
-
-
 class ConvDGN(nn.Module):
     def __init__(self, config):
         super(ConvDGN, self).__init__()
@@ -256,7 +224,6 @@ class ConvDGN(nn.Module):
         targetClass = getattr(torch_geometric.nn, builderName)
 
         self.conv_layers = nn.ModuleList()
-        self.act = F.relu
         self.dropout = F.dropout
         self.num_conv = 0
 
@@ -274,18 +241,21 @@ class ConvDGN(nn.Module):
                 self.conv_layers.append(conv_layer_instance)
                 self.num_conv += 1
 
-    def forward(self, x, edge_index, edge_weights=None):
+    def forward(self, x, adjs):
         for i, (edge_index, _, size) in enumerate(adjs):
-            x_target = x[:size[1]]  # Maybe we can add x_target as graphSage for GCNConv?
+            x_target = x[:size[1]]  # Target nodes are always placed first.
             x = self.conv_layers[i]((x, x_target), edge_index)
-            if i != self.num_layers - 1:
-                x = x.relu()
-                x = F.dropout(x, p=self.config.sage.dropout, training=self.training)
-
-        for i, conv in enumerate(self.conv_layers):
-            x = self.act(conv(x, edge_index, edge_weights))
             if i != self.num_conv - 1:
-                x = self.dropout(x, training=self.training)
+                x = x.relu()
+                x = F.dropout(x, p=0.5, training=self.training)
+        return x
+
+    def full_forward(self, x, edge_index):
+        for i, conv in enumerate(self.convs):
+            x = conv(x, edge_index)
+            if i != self.num_conv - 1:
+                x = x.relu()
+                x = F.dropout(x, p=0.5, training=self.training)
         return x
 
 

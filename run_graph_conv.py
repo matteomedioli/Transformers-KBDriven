@@ -52,7 +52,7 @@ DGN = DGN.to(device)
 for layer in DGN.modules():
     print(layer)
 
-DGN.apply(weight_init)
+DGN.reset_parameters()
 
 train_loader = NeighborSampler(data.edge_index, sizes=config.dgn.sizes, batch_size=config.dgn.batch_size,
                                shuffle=True, num_nodes=data.num_nodes, num_workers=12)
