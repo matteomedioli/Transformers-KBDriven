@@ -11,7 +11,7 @@ from torch_geometric.nn.inits import reset
 
 EPS = 1e-15
 MAX_LOGVAR = 10
-edge_type = 4
+edge_type = 21
 random.seed(1234)
 
 
@@ -29,7 +29,7 @@ def negative_sampling(pos_edge_index, num_nodes):
         perm[rest] = tmp
         rest = mask.nonzero().view(-1)
 
-    row, col = perm / num_nodes, perm % num_nodes
+    row, col = perm // num_nodes, perm % num_nodes
     return torch.stack([row, col], dim=0)
 
 
@@ -78,9 +78,16 @@ class AutoEncoder(torch.nn.Module):
 
         assert 'batch' not in data
         # negative sampling
+        
         neg_edge_index = negative_sampling(data.edge_index, data.x.size(0))
+        print(neg_edge_index.shape)
         edges = torch.cat([data.edge_index, neg_edge_index], dim=1)
-        attr = torch.cat([data.edge_attr, data.edge_attr.new_zeros(neg_edge_index.size(1), edge_type)], dim=0)
+        print(edges.shape)
+        A = data.edge_attr 
+        B = data.edge_attr.new_zeros(neg_edge_index.size(1), edge_type)
+        print(data.edge_attr.shape, neg_edge_index.size(1), edge_type)
+        print(A.shape, B.shape)
+        attr = torch.cat([A,B], dim=0)
 
         row, col = edges
 

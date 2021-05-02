@@ -26,7 +26,11 @@ batch_size = 512
 
 # load data
 data = torch.load("/data/medioli/wordnet/wordnet_v1.pt")
+data["edge_attr"] = data.edge_attrs
 print(data)
+
+
+
 
 class Encoder(torch.nn.Module):
     def __init__(self, config):
