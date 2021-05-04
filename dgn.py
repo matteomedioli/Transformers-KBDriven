@@ -64,7 +64,8 @@ class BertForWordNodeRegression(nn.Module):
                         # print(self.tokenizer.decode(ids), str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2],
                         # lemma_embedding)
                     else:
-                        words_node.append(torch.full([768], fill_value=torch.finfo(torch.float).min, dtype=torch.float))
+                        words_node.append(torch.full([64], 1, dtype=torch.float))
+                    
                 words_node_t = torch.stack(words_node)
                 node_batch.append(words_node_t)
             word_node_embeddings = torch.stack(node_batch)
@@ -80,19 +81,19 @@ class BertForWordNodeRegression(nn.Module):
                             output_attentions=output_attentions,
                             output_hidden_states=output_hidden_states,
                             return_dict=return_dict)
+        print("MLM LOSS: ", outputs["loss"])
         if self.graph_regularization:
             word_hidden_states = outputs["hidden_states"][0]
             regression_valid_idx = []
             for nodes_text_tensor in word_node_embeddings:
                 idx_word_with_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if
-                                      not torch.eq(torch.sum(lemma_embedding), 768)]
+                                      not torch.eq(torch.sum(lemma_embedding), 64)]
                 regression_valid_idx.append(idx_word_with_node)
-
             regression_out = self.regression(word_hidden_states)
 
             regression_loss = regression_criterion(regression_out, word_node_embeddings.to(device))
-            print("REG LOSS: ", regression_loss)
             outputs["loss"] = outputs["loss"] + regression_loss
+            print("REG LOSS: ", regression_loss)
 
         return outputs
 
@@ -129,7 +130,7 @@ class WordnetDGN(torch.nn.Module):
         self.dgn.reset_parameters()
 
 
-class Regression_old(nn.Module):
+class Regression(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, num_layers=2):
         super(Regression, self).__init__()
         self.num_layers = num_layers
@@ -145,29 +146,15 @@ class Regression_old(nn.Module):
             if i != self.num_layers - 1:
                 self.layers.append(nn.LeakyReLU())
                 # Dropout if you want
-                # self.layers.append(nn.Dropout())
+                # self.layers.append(nn.Dropout(p=0.4))
             else:
                 self.layers.append(nn.Softmax())
+
 
     def forward(self, inputs):
         x = inputs
         for layer in self.layers:
             x = layer(x)
-        return x
-
-    def info(self):
-        for layer in self.modules():
-            print(layer)
-
-class Regression(nn.Module):
-    def __init__(self, n_feature, n_hidden, n_output):
-        super(Regression, self).__init__()
-        self.hidden = nn.Linear(n_feature, n_hidden)   # hidden layer
-        self.predict =nn.Linear(n_hidden, n_output)   # output layer
-
-    def forward(self, x):
-        x = F.leaky_relu(self.hidden(x))      # activation function for hidden layer
-        x = self.predict(x)             # linear output
         return x
 
     def info(self):

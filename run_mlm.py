@@ -540,7 +540,7 @@ def main():
             return (loss, outputs) if return_outputs else loss
 
     logger.info("Custom Bert Initialization")
-    regression_model = Regression(768, 256, 768)
+    regression_model = Regression(768, 256, 64)
     regression_model.info()
     model = BertForWordNodeRegression(node_dict, tokenizer, model, regression_model)
     # Initialize our Trainer
