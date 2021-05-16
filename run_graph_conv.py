@@ -17,8 +17,9 @@ def train(x, edge_attrs):
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         adjs = [adj.to(device) for adj in adjs]
         optimizer.zero_grad()
-
-        out = DGN(x[n_id], adjs)
+        print(len(adjs))
+        print(n_id.shape, x[n_id].shape,edge_attrs[n_id].shape)
+        out = DGN(x[n_id], adjs, edge_attrs[n_id])
         out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
 
         pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
@@ -45,7 +46,7 @@ with open('config.json', 'r') as config_file:
 config = Config(config)
 assert (config.dgn.embedding_size == config.embedding.hidden_size)
 
-dgn_path = "/data/medioli/models/dgn/graphsage/"
+dgn_path = "/data/medioli/models/dgn/RGCN/"
 # Init main Model
 DGN = WordnetDGN(config, dgn_path)
 DGN = DGN.to(device)

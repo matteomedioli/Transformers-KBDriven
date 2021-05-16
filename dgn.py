@@ -1,5 +1,6 @@
 import torch_geometric
-from torch_geometric.nn import GCNConv, GATConv, SAGEConv, TopKPooling, global_mean_pool as gap, global_max_pool as gmp
+from torch_geometric.nn import GCNConv, GATConv, SAGEConv, RGCNConv, TopKPooling, global_mean_pool as gap, \
+    global_max_pool as gmp
 from torch.nn import Parameter
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
@@ -90,7 +91,7 @@ class BertForWordNodeRegression(nn.Module):
 
             regression_out = self.regression(word_hidden_states)
             print(regression_out.shape, word_node_embeddings.shape)
-            for i, r, n in enumerate(zip(regression_out,word_node_embeddings)):
+            for i, r, n in enumerate(zip(regression_out, word_node_embeddings)):
                 print(i, r.shape, n.shape)
 
             regression_loss = regression_criterion(regression_out, word_node_embeddings.to(device))
@@ -113,16 +114,24 @@ class WordnetDGN(torch.nn.Module):
         self.model_path = model_path
         self.reset_parameters()
 
-    def forward(self, x, adjs):
+    def forward(self, x, adjs, edge_attrs=None):
+        assert edge_attrs is not None and self.config.dgn.type == "rgcn"
         input_ids = x
         x = self.embedding(input_ids)
-        node_embeddings = self.dgn(x, adjs)
+        if self.config.dgn.type == "rgcn":
+            node_embeddings = self.dgn(x, adjs, edge_attrs)
+        else:
+            node_embeddings = self.dgn(x, adjs)
         return node_embeddings
 
-    def full_forward(self, x, edge_index, node_root_colors, epoch):
+    def full_forward(self, x, edge_index, node_root_colors, epoch, edge_attrs=None):
+        assert edge_attrs is not None and self.config.dgn.type == "rgcn"
         input_ids = x
         x = self.embedding(input_ids)
-        node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
+        if self.config.dgn.type == "rgcn":
+            node_embeddings = self.dgn(x, edge_index, edge_attrs)
+        else:
+            node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
         if epoch > 0:
             plot_pca(node_embeddings, node_root_colors, n_components=3, element_to_plot=300000, path=self.model_path,
                      epoch=epoch)
@@ -222,6 +231,8 @@ class ConvDGN(nn.Module):
             builderName = "GATConv"
         elif self.type == "sage":
             builderName = "SAGEConv"
+        elif self.type == "rgcn":
+            builderName = "RGCNConv"
         else:
             raise ValueError(
                 'Unknown node embedding layer type {}'.format(type))
@@ -233,31 +244,46 @@ class ConvDGN(nn.Module):
         self.num_conv = 0
 
         if not config.dgn.hidden_sizes_list:
-            conv_layer_instance = targetClass(self.in_dim, self.out_dim)
+            if self.type == "rgcn":
+                conv_layer_instance = targetClass(self.in_dim, self.out_dim, 20, 10)
+            else:
+                conv_layer_instance = targetClass(self.in_dim, self.out_dim)
             self.conv_layers.append(conv_layer_instance)
             self.num_conv += 1
         else:
-            conv_layer_instance = targetClass(self.in_dim, config.dgn.hidden_sizes_list[0])
+            if self.type == "rgcn":
+                conv_layer_instance = targetClass(self.in_dim, config.dgn.hidden_sizes_list[0], 20, 10)
+            else:
+                conv_layer_instance = targetClass(self.in_dim, config.dgn.hidden_sizes_list[0])
             self.conv_layers.append(conv_layer_instance)
             for i in range(len(config.dgn.hidden_sizes_list) - 1):
                 in_dim = config.dgn.hidden_sizes_list[i]
                 out_dim = config.dgn.hidden_sizes_list[i + 1]
-                conv_layer_instance = targetClass(in_dim, out_dim)
+                conv_layer_instance = targetClass(in_dim, out_dim, 20, 10)
                 self.conv_layers.append(conv_layer_instance)
                 self.num_conv += 1
 
-    def forward(self, x, adjs):
-        for i, (edge_index, _, size) in enumerate(adjs):
+    def forward(self, x, adjs, edge_attrs=None):
+        assert edge_attrs is not None and self.type == "rgcn"
+        for i, (edge_index, chilosa, size) in enumerate(adjs):
             x_target = x[:size[1]]  # Target nodes are always placed first.
-            x = self.conv_layers[i]((x, x_target), edge_index)
+            if self.type == "rgcn":
+                print(size, chilosa.shape, edge_index.shape,)
+                x = self.conv_layers[i]((x, x_target), edge_index, edge_attrs)
+            else:
+                x = self.conv_layers[i]((x, x_target), edge_index, edge_attrs)
             if i != self.num_conv - 1:
                 x = x.relu()
                 x = F.dropout(x, p=0.5, training=self.training)
         return x
 
-    def full_forward(self, x, edge_index):
+    def full_forward(self, x, edge_index, edge_attrs=None):
+        assert edge_attrs is not None and self.type == "rgcn"
         for i, conv in enumerate(self.conv_layers):
-            x = conv(x, edge_index)
+            if self.type == "rgcn":
+                x = conv(x, edge_index, edge_attrs)
+            else:
+                x = conv(x, edge_index)
             if i != self.num_conv - 1:
                 x = x.relu()
                 x = F.dropout(x, p=0.5, training=self.training)
