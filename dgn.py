@@ -259,7 +259,10 @@ class ConvDGN(nn.Module):
             for i in range(len(config.dgn.hidden_sizes_list) - 1):
                 in_dim = config.dgn.hidden_sizes_list[i]
                 out_dim = config.dgn.hidden_sizes_list[i + 1]
-                conv_layer_instance = targetClass(in_dim, out_dim, 20, 10)
+                if self.type == "rgcn":
+                    conv_layer_instance = targetClass(in_dim, out_dim, 20, 10)
+                else:
+                    conv_layer_instance = targetClass(in_dim, out_dim)
                 self.conv_layers.append(conv_layer_instance)
                 self.num_conv += 1
 
