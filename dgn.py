@@ -63,7 +63,7 @@ class BertForWordNodeRegression(nn.Module):
                         # print(self.tokenizer.decode(ids), str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2],
                         # lemma_embedding)
                     else:
-                        words_node.append(torch.full([768], fill_value=torch.finfo(torch.float).min, dtype=torch.float))
+                        words_node.append(torch.full([64], fill_value=1, dtype=torch.float))
                 words_node_t = torch.stack(words_node)
                 node_batch.append(words_node_t)
             word_node_embeddings = torch.stack(node_batch)
@@ -82,11 +82,16 @@ class BertForWordNodeRegression(nn.Module):
         if self.graph_regularization:
             word_hidden_states = outputs["hidden_states"][0]
             regression_valid_idx = []
+
             for nodes_text_tensor in word_node_embeddings:
                 idx_word_with_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if
                                       not torch.eq(torch.sum(lemma_embedding), 64)]
                 regression_valid_idx.append(idx_word_with_node)
+
             regression_out = self.regression(word_hidden_states)
+            print(regression_out.shape, word_node_embeddings.shape)
+            for i, r, n in enumerate(zip(regression_out,word_node_embeddings)):
+                print(i, r.shape, n.shape)
 
             regression_loss = regression_criterion(regression_out, word_node_embeddings.to(device))
             print("REG LOSS: ", regression_loss)
