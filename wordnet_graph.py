@@ -12,6 +12,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from tqdm import tqdm
+from itertools import chain
+import numpy as np
+import torch
+from torch_geometric.data import InMemoryDataset, Data, download_url
 
 relations_to_ids = {
     'synset': 0,
@@ -36,6 +40,7 @@ relations_to_ids = {
     'usage_domain': 19,
     'verb_group': 20
 }
+
 
 class WordNetGraph:
     '''
@@ -259,7 +264,7 @@ def reduce_wordnet(wordnet_data):
         T = wordnet_data.relation
         wordnet_data.relation = T[0:i] + T[i + 1:]
         T = wordnet_data.root
-        wordnet_data.root = T[0:i] + T[i + 1:]
+        wordnet_data.root = torch.cat([T[0:i], T[i + 1:]])
         T = wordnet_data.sense
         wordnet_data.sense = torch.cat([T[0:i], T[i + 1:]])
         c += 1
@@ -321,3 +326,127 @@ def networkx_to_Data(G):
     data.num_nodes = G.number_of_nodes()
 
     return data
+
+
+class WordNet18RR(InMemoryDataset):
+    r"""The WordNet18RR dataset from the `"Convolutional 2D Knowledge Graph
+    Embeddings" <https://arxiv.org/abs/1707.01476>`_ paper, containing 40,943
+    entities, 11 relations and 93,003 fact triplets.
+    Args:
+        root (string): Root directory where the dataset should be saved.
+        transform (callable, optional): A function/transform that takes in an
+            :obj:`torch_geometric.data.Data` object and returns a transformed
+            version. The data object will be transformed before every access.
+            (default: :obj:`None`)
+        pre_transform (callable, optional): A function/transform that takes in
+            an :obj:`torch_geometric.data.Data` object and returns a
+            transformed version. The data object will be transformed before
+            being saved to disk. (default: :obj:`None`)
+    """
+
+    url = ('https://raw.githubusercontent.com/villmow/datasets_knowledge_embedding/master/WN18RR/original')
+
+    edge2id = {
+        '_also_see': 0,
+        '_derivationally_related_form': 1,
+        '_has_part': 2,
+        '_hypernym': 3,
+        '_instance_hypernym': 4,
+        '_member_meronym': 5,
+        '_member_of_domain_region': 6,
+        '_member_of_domain_usage': 7,
+        '_similar_to': 8,
+        '_synset_domain_topic_of': 9,
+        '_verb_group': 10,
+    }
+    node2id = {}
+    idx = 0
+
+    def __init__(self, root, transform=None, pre_transform=None):
+        super(WordNet18RR, self).__init__(root, transform, pre_transform)
+        self.data, self.slices = torch.load(self.processed_paths[0])
+
+    @property
+    def raw_file_names(self):
+        return ['train.txt', 'valid.txt', 'test.txt']
+
+    @property
+    def processed_file_names(self):
+        return 'data.pt'
+
+    def download(self):
+        for filename in self.raw_file_names:
+            download_url(f'{self.url}/{filename}', self.raw_dir)
+
+    def process(self):
+        srcs, dsts, edge_types = [], [], []
+        for path in self.raw_paths:
+            with open(path, 'r') as f:
+                data = f.read().split()
+
+                src = data[::3]
+                dst = data[2::3]
+                edge_type = data[1::3]
+
+                for i in chain(src, dst):
+                    if i not in self.node2id:
+                        self.node2id[i] = self.idx
+                        self.idx += 1
+
+                src = [self.node2id[i] for i in src]
+                dst = [self.node2id[i] for i in dst]
+                edge_type = [self.edge2id[i] for i in edge_type]
+
+                srcs.append(torch.tensor(src, dtype=torch.long))
+                dsts.append(torch.tensor(dst, dtype=torch.long))
+                edge_types.append(torch.tensor(edge_type, dtype=torch.long))
+
+        src = torch.cat(srcs, dim=0)
+        dst = torch.cat(dsts, dim=0)
+        edge_type = torch.cat(edge_types, dim=0)
+
+        train_mask = torch.zeros(src.size(0), dtype=torch.bool)
+        train_mask[:srcs[0].size(0)] = True
+        val_mask = torch.zeros(src.size(0), dtype=torch.bool)
+        val_mask[srcs[0].size(0):srcs[0].size(0) + srcs[1].size(0)] = True
+        test_mask = torch.zeros(src.size(0), dtype=torch.bool)
+        test_mask[srcs[0].size(0) + srcs[1].size(0):] = True
+
+        num_nodes = max(int(src.max()), int(dst.max())) + 1
+        perm = (num_nodes * src + dst).argsort()
+
+        edge_index = torch.stack([src[perm], dst[perm]], dim=0)
+        edge_type = edge_type[perm]
+        train_mask = train_mask[perm]
+        val_mask = val_mask[perm]
+        test_mask = test_mask[perm]
+
+        data = Data(edge_index=edge_index, edge_type=edge_type,
+                    train_mask=train_mask, val_mask=val_mask,
+                    test_mask=test_mask, num_nodes=num_nodes)
+
+        if self.pre_transform is not None:
+            data = self.pre_filter(data)
+
+        torch.save(self.collate([data]), self.processed_paths[0])
+
+    def __repr__(self):
+        return f'{self.__class__.__name__}()'
+
+
+# WN = WordNet18RR("/home/med/Scrivania/data/wordnet/")
+# WN.process()
+# print(WN.node2id["dog.n.01"])
+#
+# names = [x.split(".")[0] for x in WN.node2id.keys()]
+# pos = [x.split(".")[1] for x in WN.node2id.keys()]
+# sense = [x.split(".")[2] for x in WN.node2id.keys()]
+#
+# print(len(np.unique(names)))
+# print(np.unique(pos))
+# print(np.unique(sense))
+
+from wordnet_graph import reduce_wordnet
+
+data = torch.load("synsets.pt")
+print(data)

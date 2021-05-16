@@ -45,7 +45,7 @@ from transformers import (
 )
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
-from regression import WordNodeRegression
+from optimizer import Lamb
 from utils import Config
 from dgn import WordnetDGN, BertForWordNodeRegression, Regression
 from tqdm import tqdm
@@ -543,6 +543,7 @@ def main():
     regression_model = Regression(768, 256, 64)
     regression_model.info()
     model = BertForWordNodeRegression(node_dict, tokenizer, model, regression_model)
+    optimizer = Lamb(model.parameters())
     # Initialize our Trainer
     logger.info("Trainer Initialization")
     trainer = CustomTrainer(
@@ -552,6 +553,7 @@ def main():
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=data_collator,
+        optimizers=(optimizer, None)
     )
 
     # Training
