@@ -17,9 +17,8 @@ def train(x, edge_attrs):
         # `adjs` holds a list of `(edge_index, e_id, size)` tuples.
         adjs = [adj.to(device) for adj in adjs]
         optimizer.zero_grad()
-        print(len(adjs))
-        print(n_id.shape, x[n_id].shape,edge_attrs[n_id].shape)
-        out = DGN(x[n_id], adjs, edge_attrs[n_id])
+
+        out = DGN(x[n_id], adjs, edge_attrs)
         out, pos_out, neg_out = out.split(out.size(0) // 3, dim=0)
 
         pos_loss = F.logsigmoid((out * pos_out).sum(-1)).mean()
@@ -27,9 +26,8 @@ def train(x, edge_attrs):
         loss = -pos_loss - neg_loss
         loss.backward()
         optimizer.step()
-
         total_loss += float(loss) * out.size(0)
-
+        # print("pos loss:", pos_loss, "neg loss:", neg_loss, "loss:", loss, "total loss:", total_loss)
     return total_loss / data.num_nodes
 
 
@@ -71,4 +69,4 @@ for epoch in range(1, 151):
         os.mkdir(path)
     torch.save(DGN.state_dict(), path + str(epoch) + "e_model.pt")
     DGN.eval()
-    DGN.full_forward(data.x, data.edge_index, node_root_colors_id, epoch)
+    DGN.full_forward(data.x, data.edge_index, node_root_colors_id, epoch, data.edge_attrs)

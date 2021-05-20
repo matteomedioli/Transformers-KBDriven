@@ -11,10 +11,10 @@
     "dgn": {
       "type": "rgcn",
       "embedding_size": 128,
-      "hidden_sizes_list": [128, 64, 64],
+      "hidden_sizes_list": [128, 64],
       "learning_rate": 0.0001,
       "batch_size": 256,
-      "sizes" : [15,10,5]
+      "sizes" : [20,10]
   },
   "sage": {
     "num_layers": 2,

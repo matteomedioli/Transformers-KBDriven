@@ -16,7 +16,7 @@ import numpy as np
 from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 from torch import Tensor
-
+import random
 device = cuda_setup()
 
 
@@ -129,7 +129,7 @@ class WordnetDGN(torch.nn.Module):
         input_ids = x
         x = self.embedding(input_ids)
         if self.config.dgn.type == "rgcn":
-            node_embeddings = self.dgn(x, edge_index, edge_attrs)
+            node_embeddings = self.dgn.full_forward(x, edge_index, edge_attrs).cpu().detach().numpy()
         else:
             node_embeddings = self.dgn.full_forward(x, edge_index).cpu().detach().numpy()
         if epoch > 0:
@@ -207,7 +207,7 @@ class NeighborSampler(RawNeighborSampler):
 
         # For each node in `batch`, we sample a direct neighbor (as positive
         # example) and a random node (as negative example):
-        pos_batch = random_walk(row, col, batch, walk_length=1,
+        pos_batch = random_walk(row, col, batch, walk_length=2,
                                 coalesced=False)[:, 1]
 
         neg_batch = torch.randint(0, self.adj_t.size(1), (batch.numel(),),
@@ -268,11 +268,11 @@ class ConvDGN(nn.Module):
 
     def forward(self, x, adjs, edge_attrs=None):
         assert edge_attrs is not None and self.type == "rgcn"
-        for i, (edge_index, chilosa, size) in enumerate(adjs):
+        for i, (edge_index, e, size) in enumerate(adjs):
+            rand_edge_attrs = torch.Tensor([random.randint(0,20) for _ in range(e.shape[0])])
             x_target = x[:size[1]]  # Target nodes are always placed first.
             if self.type == "rgcn":
-                print(size, chilosa.shape, edge_index.shape,)
-                x = self.conv_layers[i]((x, x_target), edge_index, edge_attrs)
+                x = self.conv_layers[i]((x, x_target), edge_index, edge_attrs[:e.shape[0]])
             else:
                 x = self.conv_layers[i]((x, x_target), edge_index, edge_attrs)
             if i != self.num_conv - 1:
