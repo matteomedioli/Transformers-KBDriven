@@ -25,7 +25,7 @@ def weight_init(m):
 
 
 class BertForWordNodeRegression(nn.Module):
-    def __init__(self, node_dict, tokenizer, bert_model, regression_model, reg_lambda=1, graph_regularization=True):
+    def __init__(self, node_dict, tokenizer, bert_model, regression_model, reg_lambda=1, graph_regularization=False):
         super(BertForWordNodeRegression, self).__init__()
         self.graph_regularization = graph_regularization
         self.node_dict = node_dict
@@ -68,7 +68,7 @@ class BertForWordNodeRegression(nn.Module):
                 words_node_t = torch.stack(words_node)
                 node_batch.append(words_node_t)
             word_node_embeddings = torch.stack(node_batch)
-
+            
         outputs = self.bert(input_ids=input_ids,
                             attention_mask=attention_mask,
                             token_type_ids=token_type_ids,
@@ -85,17 +85,17 @@ class BertForWordNodeRegression(nn.Module):
             regression_valid_idx = []
 
             for nodes_text_tensor in word_node_embeddings:
-                idx_word_with_node = [i for i, lemma_embedding in enumerate(nodes_text_tensor) if
-                                      not torch.eq(torch.sum(lemma_embedding), 64)]
+                idx_word_with_node = [True if not torch.eq(torch.sum(lemma_embedding), 64) else False for i, lemma_embedding in enumerate(nodes_text_tensor)]
                 regression_valid_idx.append(idx_word_with_node)
-
+            regression_valid_idx_mask = torch.tensor(regression_valid_idx)
             regression_out = self.regression(word_hidden_states)
-            print(regression_out.shape, word_node_embeddings.shape)
-            for i, r, n in enumerate(zip(regression_out, word_node_embeddings)):
-                print(i, r.shape, n.shape)
-
-            regression_loss = regression_criterion(regression_out, word_node_embeddings.to(device))
-            print("REG LOSS: ", regression_loss)
+            #print(regression_valid_idx_mask.shape)
+            #print(regression_out.shape, word_node_embeddings.shape)
+            #print(regression_out[regression_valid_idx_mask].shape, word_node_embeddings[regression_valid_idx_mask].shape)
+            # for i, (r, n) in enumerate(zip(regression_out, word_node_embeddings)):
+            #     print(i, r.shape, n.shape)
+            regression_loss = regression_criterion(regression_out[regression_valid_idx_mask], word_node_embeddings[regression_valid_idx_mask].to(device))
+            #print("REG LOSS: ", regression_loss)
             outputs["loss"] = outputs["loss"] + (self.reg_lambda * regression_loss)
 
         return outputs
@@ -272,9 +272,9 @@ class ConvDGN(nn.Module):
             rand_edge_attrs = torch.Tensor([random.randint(0,20) for _ in range(e.shape[0])])
             x_target = x[:size[1]]  # Target nodes are always placed first.
             if self.type == "rgcn":
-                x = self.conv_layers[i]((x, x_target), edge_index, edge_attrs[:e.shape[0]])
+                x = self.conv_layers[i]((x, x_target), edge_index, rand_edge_attrs)#edge_attrs[:e.shape[0]])
             else:
-                x = self.conv_layers[i]((x, x_target), edge_index, edge_attrs)
+                x = self.conv_layers[i]((x, x_target), edge_index)
             if i != self.num_conv - 1:
                 x = x.relu()
                 x = F.dropout(x, p=0.5, training=self.training)

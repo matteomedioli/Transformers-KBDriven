@@ -494,28 +494,29 @@ def main():
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm_probability=data_args.mlm_probability)
 
     # FULL FORWARD GRAPHSAGE
-    wordnet = torch.load("/data/medioli/wordnet/wordnet_ids.pt")
+    wordnet = torch.load("/data/medioli/wordnet/wordnet_v1.pt")
+    print(wordnet)
     # Load configuration file
     with open('config.json', 'r') as config_file:
         config = json.load(config_file)
     config = Config(config)
     assert (config.dgn.embedding_size == config.embedding.hidden_size)
-    dgn_path = "/data/medioli/models/dgn/graphsage/"
+    dgn_path = "/data/medioli/models/dgn/RGCN/"
     model_graph_sage = WordnetDGN(config, dgn_path)
-    model_graph_sage.load_state_dict(torch.load("/data/medioli/models/dgn/graphsage/100e_model.pt"))
+    model_graph_sage.load_state_dict(torch.load("/data/medioli/models/dgn/RGCN/150e_model.pt"))
     model_graph_sage.eval()
-    if os.path.exists("/data/medioli/wordnet/node_dict_w1_e100.pt"):
-        node_dict = torch.load("/data/medioli/wordnet/node_dict_w1_e100.pt")
+    if os.path.exists("/data/medioli/wordnet/node_dict_w2_rgcn_e150.pt"):
+        node_dict = torch.load("/data/medioli/wordnet/node_dict_w2_rgcn_e150.pt")
         logger.info("NODE DICT Loaded")
     else:
         logger.info("START COMPUTING NODE DICT")
-        node_embeddings = model_graph_sage.full_forward(wordnet.x, wordnet.edge_index, None, 0)
+        node_embeddings = model_graph_sage.full_forward(wordnet.x, wordnet.edge_index,None, 0, wordnet.edge_attrs)
         node_dict = {}
-        for n, e in tqdm(zip(wordnet.name, node_embeddings), desc="Pairing wordnet names with node embeddings..."):
+        for n, e in tqdm(zip(wordnet.node_names, node_embeddings), desc="Pairing wordnet names with node embeddings..."):
             node_dict[n] = e
         logger.info("END COMPUTING NODE DICT")
-        torch.save(node_dict, "/data/medioli/wordnet/node_dict_w1_e100.pt")
-        logger.info("NODE DICT Save to wordnet/node_dict_w1_e100.pt")
+        torch.save(node_dict, "/data/medioli/wordnet/node_dict_w2_rgcn_e150.pt")
+        logger.info("NODE DICT Save to wordnet/node_dict_w2_rgcn_e150.pt")
 
     class CustomTrainer(Trainer):
         def compute_loss(self, model, inputs, return_outputs=False):
@@ -536,14 +537,14 @@ def main():
             else:
                 # We don't use .loss here since the model may return tuples instead of ModelOutput.
                 loss = outputs["loss"] if isinstance(outputs, dict) else outputs[0]
-            print("STD Loss:", outputs["loss"])
+            #print("STD Loss:", outputs["loss"])
             return (loss, outputs) if return_outputs else loss
 
     logger.info("Custom Bert Initialization")
     regression_model = Regression(768, 256, 64)
     regression_model.info()
     model = BertForWordNodeRegression(node_dict, tokenizer, model, regression_model)
-    optimizer = Lamb(model.parameters())
+    # optimizer = Lamb(model.parameters())
     # Initialize our Trainer
     logger.info("Trainer Initialization")
     trainer = CustomTrainer(
@@ -552,8 +553,8 @@ def main():
         train_dataset=train_dataset if training_args.do_train else None,
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
-        data_collator=data_collator,
-        optimizers=(optimizer, None)
+        data_collator=data_collator
+        #, optimizers=(optimizer, None)
     )
 
     # Training
