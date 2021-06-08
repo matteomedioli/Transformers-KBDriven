@@ -1,21 +1,19 @@
-from nltk.corpus import wordnet
-from utils import format_label
-import networkx as nx
+import logging
 import timeit
-import time
-from IPython.display import clear_output
+from itertools import chain
+
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
+import pandas as pd
 import torch
 import torch_geometric
-import logging
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import os
-from tqdm import tqdm
-from itertools import chain
-import numpy as np
-import torch
+from IPython.display import clear_output
+from nltk.corpus import wordnet
 from torch_geometric.data import InMemoryDataset, Data, download_url
+from tqdm import tqdm
+
+from utils import format_label
 
 relations_to_ids = {
     'synset': 0,
@@ -445,8 +443,6 @@ class WordNet18RR(InMemoryDataset):
 # print(len(np.unique(names)))
 # print(np.unique(pos))
 # print(np.unique(sense))
-
-from wordnet_graph import reduce_wordnet
 
 data = torch.load("synsets.pt")
 print(data)

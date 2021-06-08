@@ -1,12 +1,11 @@
-from models import WordnetDGN, NeighborSampler, weight_init
-import torch.nn.functional as F
-import torch.nn as nn
-import torch
-import time
-from datetime import datetime
-from utils import cuda_setup, create_data_split, Config
-import os
 import json
+import os
+
+import torch
+import torch.nn.functional as F
+
+from models import WordnetDGN, NeighborSampler
+from utils import cuda_setup, Config
 
 
 def train(x, edge_attrs):

@@ -1,28 +1,67 @@
-import torch_geometric
-from torch_geometric.nn import GCNConv, GATConv, SAGEConv, RGCNConv, TopKPooling, global_mean_pool as gap, \
-    global_max_pool as gmp
-from torch.nn import Parameter
-from torch_geometric.nn.conv import MessagePassing
-from torch_geometric.nn.inits import reset, uniform
-from torch_geometric.nn.conv.gcn_conv import gcn_norm
-import torch.nn.functional as F
-import torch.nn as nn
+import random
+
 import torch
-from utils import cuda_setup, plot_pca
+import torch.nn as nn
+import torch.nn.functional as F
+import torch_geometric
+from nltk.corpus import wordnet as wn
 from torch_cluster import random_walk
 from torch_geometric.data import NeighborSampler as RawNeighborSampler
-from nltk.corpus import wordnet as wn
-import numpy as np
-from torch.utils.data import Dataset, DataLoader, random_split
-import torch
-from torch import Tensor
-import random
+from transformers import PretrainedConfig
+
+from utils import cuda_setup, plot_pca
 
 device = cuda_setup()
 
 
 def weight_init(m):
     m.reset_parameters()
+
+
+class BertConfigCustom(PretrainedConfig):
+    def __init__(
+            self,
+            vocab_size=30522,
+            hidden_size=768,
+            num_hidden_layers=12,
+            num_attention_heads=12,
+            intermediate_size=3072,
+            hidden_act="gelu",
+            hidden_dropout_prob=0.1,
+            attention_probs_dropout_prob=0.1,
+            max_position_embeddings=514,
+            type_vocab_size=2,
+            initializer_range=0.02,
+            layer_norm_eps=1e-12,
+            pad_token_id=0,
+            gradient_checkpointing=False,
+            position_embedding_type="absolute",
+            use_cache=True,
+            **kwargs
+    ):
+        super().__init__(pad_token_id=pad_token_id, **kwargs)
+
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.num_hidden_layers = num_hidden_layers
+        self.num_attention_heads = num_attention_heads
+        self.hidden_act = hidden_act
+        self.intermediate_size = intermediate_size
+        self.hidden_dropout_prob = hidden_dropout_prob
+        self.attention_probs_dropout_prob = attention_probs_dropout_prob
+        self.max_position_embeddings = max_position_embeddings
+        self.type_vocab_size = type_vocab_size
+        self.initializer_range = initializer_range
+        self.layer_norm_eps = layer_norm_eps
+        self.gradient_checkpointing = gradient_checkpointing
+        self.position_embedding_type = position_embedding_type
+        self.use_cache = use_cache
+
+
+class RobertaConfigCustom(BertConfigCustom):
+    def __init__(self, pad_token_id=1, bos_token_id=0, eos_token_id=2, **kwargs):
+        """Constructs RobertaConfig."""
+        super().__init__(pad_token_id=pad_token_id, bos_token_id=bos_token_id, eos_token_id=eos_token_id, **kwargs)
 
 
 class BertForWordNodeRegression(nn.Module):
@@ -69,7 +108,7 @@ class BertForWordNodeRegression(nn.Module):
                 words_node_t = torch.stack(words_node)
                 node_batch.append(words_node_t)
             word_node_embeddings = torch.stack(node_batch)
-            
+
         outputs = self.bert(input_ids=input_ids,
                             attention_mask=attention_mask,
                             token_type_ids=token_type_ids,
@@ -86,17 +125,19 @@ class BertForWordNodeRegression(nn.Module):
             regression_valid_idx = []
 
             for nodes_text_tensor in word_node_embeddings:
-                idx_word_with_node = [True if not torch.eq(torch.sum(lemma_embedding), 64) else False for i, lemma_embedding in enumerate(nodes_text_tensor)]
+                idx_word_with_node = [True if not torch.eq(torch.sum(lemma_embedding), 64) else False for
+                                      i, lemma_embedding in enumerate(nodes_text_tensor)]
                 regression_valid_idx.append(idx_word_with_node)
             regression_valid_idx_mask = torch.tensor(regression_valid_idx)
             regression_out = self.regression(word_hidden_states)
-            #print(regression_valid_idx_mask.shape)
-            #print(regression_out.shape, word_node_embeddings.shape)
-            #print(regression_out[regression_valid_idx_mask].shape, word_node_embeddings[regression_valid_idx_mask].shape)
+            # print(regression_valid_idx_mask.shape)
+            # print(regression_out.shape, word_node_embeddings.shape)
+            # print(regression_out[regression_valid_idx_mask].shape, word_node_embeddings[regression_valid_idx_mask].shape)
             # for i, (r, n) in enumerate(zip(regression_out, word_node_embeddings)):
             #     print(i, r.shape, n.shape)
-            regression_loss = regression_criterion(regression_out[regression_valid_idx_mask], word_node_embeddings[regression_valid_idx_mask].to(device))
-            #print("REG LOSS: ", regression_loss)
+            regression_loss = regression_criterion(regression_out[regression_valid_idx_mask],
+                                                   word_node_embeddings[regression_valid_idx_mask].to(device))
+            # print("REG LOSS: ", regression_loss)
             outputs["loss"] = outputs["loss"] + (self.reg_lambda * regression_loss)
 
         return outputs
@@ -270,10 +311,10 @@ class ConvDGN(nn.Module):
     def forward(self, x, adjs, edge_attrs=None):
         assert edge_attrs is not None and self.type == "rgcn"
         for i, (edge_index, e, size) in enumerate(adjs):
-            rand_edge_attrs = torch.Tensor([random.randint(0,20) for _ in range(e.shape[0])])
+            rand_edge_attrs = torch.Tensor([random.randint(0, 20) for _ in range(e.shape[0])])
             x_target = x[:size[1]]  # Target nodes are always placed first.
             if self.type == "rgcn":
-                x = self.conv_layers[i]((x, x_target), edge_index, rand_edge_attrs)#edge_attrs[:e.shape[0]])
+                x = self.conv_layers[i]((x, x_target), edge_index, rand_edge_attrs)  # edge_attrs[:e.shape[0]])
             else:
                 x = self.conv_layers[i]((x, x_target), edge_index)
             if i != self.num_conv - 1:
