@@ -17,6 +17,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import torch
 from torch import Tensor
 import random
+
 device = cuda_setup()
 
 

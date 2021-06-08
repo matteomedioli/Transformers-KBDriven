@@ -47,7 +47,7 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from optimizer import Lamb
 from utils import Config
-from dgn import WordnetDGN, BertForWordNodeRegression, Regression
+from models import WordnetDGN, BertForWordNodeRegression, Regression
 from tqdm import tqdm
 
 

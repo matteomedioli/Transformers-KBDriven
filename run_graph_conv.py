@@ -1,4 +1,4 @@
-from dgn import WordnetDGN, NeighborSampler, weight_init
+from models import WordnetDGN, NeighborSampler, weight_init
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
