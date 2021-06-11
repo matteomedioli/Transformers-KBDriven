@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from sklearn.decomposition import PCA
 from torch.utils.data import DataLoader
+from transformers import BertForMaskedLM
 
 
 class Config(dict):
@@ -124,3 +125,16 @@ def create_data_split(data, test_perc=0.1, val_perc=0.2):
     val_mask[perm[t:t + num_test]] = True
     test_mask[perm[t + num_test:]] = True
     return train_mask, val_mask, test_mask
+
+
+def load_model(path, checkpoint_fldr_and_bin, regularized=False, device='cuda'):
+    state_dict = torch.load(path + checkpoint_fldr_and_bin, map_location=torch.device(device))
+    keys = state_dict.keys()
+    if regularized:
+        for k in list(keys):
+            if 'bert.' in k:
+                state_dict[k[5:]] = state_dict[k]
+                del state_dict[k]
+    return BertForMaskedLM.from_pretrained(
+        pretrained_model_name_or_path=path,
+        state_dict=state_dict)
