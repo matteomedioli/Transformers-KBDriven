@@ -19,5 +19,9 @@
   "sage": {
     "num_layers": 2,
     "dropout": 0.5
+  },
+  "probing":
+  {
+    "batch_size": 100
   }
 }

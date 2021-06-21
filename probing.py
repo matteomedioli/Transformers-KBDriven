@@ -132,7 +132,7 @@ class PROBINGEval(object):
 
     def run(self, params, batcher):
         task_embed = {'train': {}, 'dev': {}, 'test': {}}
-        bsize = params.batch_size
+        bsize = params.probing.batch_size
         logging.info('Computing embeddings for train/dev/test')
         for key in self.task_data:
             # Sort to reduce padding
