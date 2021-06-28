@@ -28,11 +28,14 @@ def bert_batcher(model, batch):
 with open('config.json', 'r') as config_file:
     config = json.load(config_file)
 config = Config(config)
+print(config)
+print(config.paths[config.env])
+
 models_folder = config.paths[config.env].models
 tasks_folder = config.paths[config.env].tasks
 
-model = load_model(models_folder+"baseline/checkpoint-740000/", "pytorch_model.bin", False, "cpu")
-model_reg = load_model(models_folder+"rgcn/checkpoint-740000/", "pytorch_model.bin", True, "cpu")
+model = load_model(models_folder+"baseline/", "pytorch_model.bin", False, "cuda")
+model_reg = load_model(models_folder+"rgcn/", "pytorch_model.bin", True, "cuda")
 
 probe = ObjNumberEval(tasks_folder)
 baseline = probe.run(model, config, bert_batcher)
