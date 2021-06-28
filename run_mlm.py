@@ -46,7 +46,7 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 from optimizer import Lamb
 from utils import Config
-from models import WordnetDGN, BertForWordNodeRegression, Regression
+from models import WordnetDGN, BertForWordNodeRegression, Regression, BertConfigCustom, RobertaConfigCustom
 from tqdm import tqdm
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.

@@ -13,6 +13,7 @@ import io
 import copy
 import logging
 import numpy as np
+from tqdm import tqdm
 
 assert (sklearn.__version__ >= "0.18.0"), \
     "need to update sklearn to version >= 0.18.0"
@@ -130,7 +131,7 @@ class PROBINGEval(object):
             for i, y in enumerate(self.task_data[split]['y']):
                 self.task_data[split]['y'][i] = self.tok2label[y]
 
-    def run(self, params, batcher):
+    def run(self, model, params, batcher):
         task_embed = {'train': {}, 'dev': {}, 'test': {}}
         bsize = params.probing.batch_size
         logging.info('Computing embeddings for train/dev/test')
@@ -142,9 +143,9 @@ class PROBINGEval(object):
             self.task_data[key]['X'], self.task_data[key]['y'] = map(list, zip(*sorted_data))
 
             task_embed[key]['X'] = []
-            for ii in range(0, len(self.task_data[key]['y']), bsize):
+            for ii in tqdm(range(0, len(self.task_data[key]['y']), bsize)):
                 batch = self.task_data[key]['X'][ii:ii + bsize]
-                embeddings = batcher(params, batch)
+                embeddings = batcher(model, batch)
                 task_embed[key]['X'].append(embeddings)
             task_embed[key]['X'] = np.vstack(task_embed[key]['X'])
             task_embed[key]['y'] = np.array(self.task_data[key]['y'])

@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import torch
 from sklearn.decomposition import PCA
 from torch.utils.data import DataLoader
-from transformers import BertForMaskedLM
+from transformers import BertModel
 import numpy as np
 import re
 import inspect
@@ -138,7 +138,7 @@ def load_model(path, checkpoint_fldr_and_bin, regularized=False, device='cuda'):
             if 'bert.' in k:
                 state_dict[k[5:]] = state_dict[k]
                 del state_dict[k]
-    return BertForMaskedLM.from_pretrained(
+    return BertModel.from_pretrained(
         pretrained_model_name_or_path=path,
         state_dict=state_dict)
 
