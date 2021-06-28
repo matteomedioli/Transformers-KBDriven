@@ -24,5 +24,16 @@
   {
     "model": "rgcn",
     "batch_size": 100
-  }
+  },
+  "paths": {
+    "local": {
+      "models": "/home/med/Scrivania/models/",
+      "tasks": "/home/med/Scrivania/data/tasks/"
+    },
+    "remote":{
+      "models": "/data/medioli/models/mlm/",
+      "tasks": "/data/medioli/tasks/"
+    }
+  },
+  "env": "remote"
 }

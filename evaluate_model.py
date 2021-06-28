@@ -28,39 +28,41 @@ def bert_batcher(model, batch):
 with open('config.json', 'r') as config_file:
     config = json.load(config_file)
 config = Config(config)
+models_folder = config.paths[config.env].models
+tasks_folder = config.paths[config.env].tasks
 
-model = load_model("/home/med/Scrivania/models/baseline/checkpoint-740000/", "pytorch_model.bin", False, "cpu")
-model_reg = load_model("/home/med/Scrivania/models/rgcn/checkpoint-740000/", "pytorch_model.bin", True, "cpu")
+model = load_model(models_folder+"baseline/checkpoint-740000/", "pytorch_model.bin", False, "cpu")
+model_reg = load_model(models_folder+"rgcn/checkpoint-740000/", "pytorch_model.bin", True, "cpu")
 
-probe = ObjNumberEval("/home/med/Scrivania/data/probing")
+probe = ObjNumberEval(tasks_folder)
 baseline = probe.run(model, config, bert_batcher)
 regular = probe.run(model_reg, config, bert_batcher)
 print("BASELINE\n", baseline, "\n")
 print("RGCN\n", regular, "\n")
 
 
-probe = DepthEval("/home/med/Scrivania/data/probing")
+probe = DepthEval(tasks_folder)
 baseline = probe.run(model, config, bert_batcher)
 regular = probe.run(model_reg, config, bert_batcher)
 print("BASELINE\n", baseline, "\n")
 print("RGCN\n", regular, "\n")
 
 
-probe = CoordinationInversionEval("/home/med/Scrivania/data/probing")
+probe = CoordinationInversionEval(tasks_folder)
 baseline = probe.run(model, config, bert_batcher)
 regular = probe.run(model_reg, config, bert_batcher)
 print("BASELINE\n", baseline, "\n")
 print("RGCN\n", regular, "\n")
 
  
-probe = SubjNumberEval("/home/med/Scrivania/data/probing")
+probe = SubjNumberEval(tasks_folder)
 baseline = probe.run(model, config, bert_batcher)
 regular = probe.run(model_reg, config, bert_batcher)
 print("BASELINE\n", baseline, "\n")
 print("RGCN\n", regular, "\n")
 
 
-probe = OddManOutEval("/home/med/Scrivania/data/probing")
+probe = OddManOutEval(tasks_folder)
 baseline = probe.run(model, config, bert_batcher)
 regular = probe.run(model_reg, config, bert_batcher)
 print("BASELINE\n", baseline, "\n")
