@@ -19,6 +19,8 @@ assert (sklearn.__version__ >= "0.18.0"), \
     "need to update sklearn to version >= 0.18.0"
 from sklearn.linear_model import LogisticRegression
 
+logger = logging.getLogger('dev')
+logger.setLevel(logging.DEBUG)
 
 def get_classif_name(classifier_config, usepytorch):
     if not usepytorch:
@@ -51,7 +53,7 @@ class SplitClassifier(object):
         self.config = config
 
     def run(self):
-        logging.info('Training {0} with standard validation..'
+        logger.info('Training {0} with standard validation..'
                      .format(self.modelname))
         regs = [10 ** t for t in range(-5, -1)] if self.usepytorch else \
             [2 ** t for t in range(-2, 4, 1)]
@@ -72,14 +74,14 @@ class SplitClassifier(object):
                 clf.fit(self.X['train'], self.y['train'])
             scores.append(round(100 * clf.score(self.X['valid'],
                                                 self.y['valid']), 2))
-        logging.info([('reg:' + str(regs[idx]), scores[idx])
+        logger.info([('reg:' + str(regs[idx]), scores[idx])
                       for idx in range(len(scores))])
         optreg = regs[np.argmax(scores)]
         devaccuracy = np.max(scores)
-        logging.info('Validation : best param found is reg = {0} with score \
+        logger.info('Validation : best param found is reg = {0} with score \
             {1}'.format(optreg, devaccuracy))
         clf = LogisticRegression(C=optreg, random_state=self.seed)
-        logging.info('Evaluating...')
+        logger.info('Evaluating...')
         if self.usepytorch:
             clf = MLP(self.classifier_config, inputdim=self.featdim,
                       nclasses=self.nclasses, l2reg=optreg,
@@ -101,12 +103,12 @@ class PROBINGEval(object):
     def __init__(self, task, task_path, seed=1111):
         self.seed = seed
         self.task = task
-        logging.debug('***** (Probing) Transfer task : %s classification *****', self.task.upper())
+        logger.debug('***** (Probing) Transfer task : %s classification *****', self.task.upper())
         self.task_data = {'train': {'X': [], 'y': []},
                           'dev': {'X': [], 'y': []},
                           'test': {'X': [], 'y': []}}
         self.loadFile(task_path)
-        logging.info('Loaded %s train - %s dev - %s test for %s' %
+        logger.info('Loaded %s train - %s dev - %s test for %s' %
                      (len(self.task_data['train']['y']), len(self.task_data['dev']['y']),
                       len(self.task_data['test']['y']), self.task))
 
@@ -134,7 +136,7 @@ class PROBINGEval(object):
     def run(self, model, params, batcher):
         task_embed = {'train': {}, 'dev': {}, 'test': {}}
         bsize = params.probing.batch_size
-        logging.info('Computing embeddings for train/dev/test')
+        logger.info('Computing embeddings for train/dev/test')
         for key in self.task_data:
             # Sort to reduce padding
             sorted_data = sorted(zip(self.task_data[key]['X'],
@@ -149,7 +151,7 @@ class PROBINGEval(object):
                 task_embed[key]['X'].append(embeddings)
             task_embed[key]['X'] = np.vstack(task_embed[key]['X'])
             task_embed[key]['y'] = np.array(self.task_data[key]['y'])
-        logging.info('Computed embeddings')
+        logger.info('Computed embeddings')
 
         config_classifier = {'nclasses': self.nclasses, 'seed': self.seed,
                              'usepytorch': params.usepytorch,
@@ -169,7 +171,7 @@ class PROBINGEval(object):
                               config=config_classifier)
 
         devacc, testacc = clf.run()
-        logging.debug('\nDev acc : %.1f Test acc : %.1f for %s classification\n' % (devacc, testacc, self.task.upper()))
+        logger.debug('\nDev acc : %.1f Test acc : %.1f for %s classification\n' % (devacc, testacc, self.task.upper()))
 
         return {'devacc': devacc, 'acc': testacc,
                 'ndev': len(task_embed['dev']['X']),
