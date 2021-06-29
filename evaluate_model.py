@@ -16,13 +16,13 @@ def tokenize_function(examples):
     )
 
 
-def bert_batcher(model, batch):
+def bert_batcher(model, batch): 
     examples = [' '.join(s) for s in batch]
     tokenized_batch = tokenize_function(examples)
     with torch.no_grad():
-        out = model(torch.tensor(tokenized_batch.input_ids))
-        hidden_states = out["last_hidden_state"]
-    return hidden_states
+        out = model(torch.tensor(tokenized_batch.input_ids), output_hidden_states=True)
+        last_hidden_states = out["hidden_states"][0]
+    return last_hidden_states[:,0,:]
 
 
 with open('config.json', 'r') as config_file:

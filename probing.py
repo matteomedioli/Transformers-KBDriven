@@ -145,10 +145,12 @@ class PROBINGEval(object):
             self.task_data[key]['X'], self.task_data[key]['y'] = map(list, zip(*sorted_data))
 
             task_embed[key]['X'] = []
+            
             for ii in tqdm(range(0, len(self.task_data[key]['y']), bsize)):
                 batch = self.task_data[key]['X'][ii:ii + bsize]
                 embeddings = batcher(model, batch)
                 task_embed[key]['X'].append(embeddings)
+            
             task_embed[key]['X'] = np.vstack(task_embed[key]['X'])
             task_embed[key]['y'] = np.array(self.task_data[key]['y'])
         logger.info('Computed embeddings')
