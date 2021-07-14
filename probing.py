@@ -133,7 +133,7 @@ class PROBINGEval(object):
             for i, y in enumerate(self.task_data[split]['y']):
                 self.task_data[split]['y'][i] = self.tok2label[y]
 
-    def run(self, model, params, batcher):
+    def run(self, model, params, batcher, reg = False):
         task_embed = {'train': {}, 'dev': {}, 'test': {}}
         bsize = params.probing.batch_size
         logger.info('Computing embeddings for train/dev/test')
@@ -148,7 +148,7 @@ class PROBINGEval(object):
             
             for ii in tqdm(range(0, len(self.task_data[key]['y']), bsize)):
                 batch = self.task_data[key]['X'][ii:ii + bsize]
-                embeddings = batcher(model, batch)
+                embeddings = batcher(model, batch, add_node_embedding = reg)
                 task_embed[key]['X'].append(embeddings)
             
             task_embed[key]['X'] = np.vstack(task_embed[key]['X'])

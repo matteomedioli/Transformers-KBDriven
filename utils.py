@@ -130,7 +130,7 @@ def create_data_split(data, test_perc=0.1, val_perc=0.2):
     return train_mask, val_mask, test_mask
 
 
-def load_model(path, checkpoint_fldr_and_bin, regularized=False, device='cuda'):
+def load_custom_model(path, checkpoint_fldr_and_bin, regularized=False, device='cuda'):
     state_dict = torch.load(path + checkpoint_fldr_and_bin, map_location=torch.device(device))
     keys = state_dict.keys()
     if regularized:
