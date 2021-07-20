@@ -48,6 +48,7 @@ from optimizer import Lamb
 from utils import Config
 from models import WordnetDGN, BertForWordNodeRegression, Regression, BertConfigCustom, RobertaConfigCustom
 from tqdm import tqdm
+from wsd import sentence_synsets
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.4.0")
@@ -382,6 +383,25 @@ def main():
                 load_from_cache_file=not data_args.overwrite_cache,
             )
             torch.save(tokenized_datasets, "/data/medioli/datasets/tokenized_datasets.pt")
+            logger.info("SAVED TOKENIZED DATASET")
+
+        if os.path.exists(
+                "/data/medioli/datasets/synsets_dataset.pt"):  # TOGLI IL NOT QUANDO SALVI NA ROBA DECENTE
+            logger.info("Load synsets dataset: /data/medioli/datasets/synsets_dataset.pt")
+            tokenized_datasets = torch.load("/data/medioli/datasets/synsets_dataset.pt")
+        else:
+            def synsets_function(examples):
+                # Remove empty lines
+                return [sentence_synsets(line) for line in examples["text"] if len(line) > 0 and not line.isspace()]
+            logger.info("Compute SYNSETS DATASET")
+            synsets_dataset = datasets.map(
+                synsets_function,
+                batched=True,
+                num_proc=data_args.preprocessing_num_workers,
+                remove_columns=[text_column_name],
+                load_from_cache_file=not data_args.overwrite_cache,
+            )
+            torch.save(synsets_dataset, "/data/medioli/datasets/synsets_dataset.pt")
             logger.info("SAVED TOKENIZED DATASET")
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
