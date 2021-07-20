@@ -1,6 +1,4 @@
 import math
-
-import scipy
 from nltk.corpus import wordnet as wn
 import nltk
 import numpy as np
@@ -180,16 +178,31 @@ def max_cj(ci, cjs):
         return wup_similarity(ci, cj, score(ci, cj))
 
 
-def sentence_synsets(sentence):
+def sentence_synsets(sentence, evaluate_neighbors=True, neighbors_d = 2):
+    index = [i for i, x in enumerate(sentence) if x.lower() not in stopwords.words("english")]
     sentence = [x.lower() for x in sentence if x.lower() not in stopwords.words("english")]
-    print(sentence)
     synsets = {}
-    for target in sentence:
+    for i, (target, real_ind) in enumerate(zip(sentence, index)):
+        if evaluate_neighbors:
+            neighbors = []
+            for x in range(1,neighbors_d):
+                neg = (i - x) % len(sentence)
+                pos = (i + x) % len(sentence)
+                if neg < i:
+                    neighbors.append(sentence[neg])
+                else:
+                    neighbors.append(sentence[(pos+1) % len(sentence)])
+                if pos > i:
+                    neighbors.append(sentence[pos])
+                else:
+                    neighbors.append(sentence[(neg-1)% len(sentence)])
+        else:
+            neighbors = sentence
         M = 0
         best_ci = None
         for ci in wn.synsets(target):
             max_sum = 0
-            for other in sentence:
+            for other in neighbors:
                 if other is not target:
                     for cj in wn.synsets(other):
                         wup = score(ci,cj)
@@ -197,12 +210,6 @@ def sentence_synsets(sentence):
             if max_sum > M:
                 M=max_sum
                 best_ci = ci
-        synsets[target] = best_ci
+        synsets[real_ind] = best_ci
     return synsets
-
-s1 = ["The","bank", "will","not","be","accepting","cash","on","Saturdays"]
-s2 = ["The","river","overflowed", "the", "bank"]
-
-print(sentence_synsets(s1))
-print(sentence_synsets(s2))
 
