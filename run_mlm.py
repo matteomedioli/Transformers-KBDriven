@@ -390,9 +390,11 @@ def main():
             logger.info("Load synsets dataset: /data/medioli/datasets/synsets_dataset.pt")
             tokenized_datasets = torch.load("/data/medioli/datasets/synsets_dataset.pt")
         else:
+            
             def synsets_function(examples):
-                # Remove empty lines
-                return [sentence_synsets(line) for line in examples["text"] if len(line) > 0 and not line.isspace()]
+                synsets = [sentence_synsets(line) for line in tqdm(examples["text"]) if len(line) > 0 and not line.isspace()]
+                return synsets
+
             logger.info("Compute SYNSETS DATASET")
             synsets_dataset = datasets.map(
                 synsets_function,

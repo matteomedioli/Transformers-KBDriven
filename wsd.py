@@ -210,6 +210,8 @@ def sentence_synsets(sentence, evaluate_neighbors=True, neighbors_d = 2):
             if max_sum > M:
                 M=max_sum
                 best_ci = ci
-        synsets[real_ind] = best_ci
+        if best_ci is not None:
+            synsets[real_ind] = best_ci.name()
+            print(target, best_ci.name())
     return synsets
 

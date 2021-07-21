@@ -66,7 +66,7 @@ class RobertaConfigCustom(BertConfigCustom):
 
 
 class BertForWordNodeRegression(nn.Module):
-    def __init__(self, node_dict, tokenizer, bert_model, regression_model, reg_lambda=1, graph_regularization=False):
+    def __init__(self, node_dict, tokenizer, bert_model, regression_model, reg_lambda=1, graph_regularization=True):
         super(BertForWordNodeRegression, self).__init__()
         self.graph_regularization = graph_regularization
         self.node_dict = node_dict
