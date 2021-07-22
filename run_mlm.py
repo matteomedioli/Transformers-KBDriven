@@ -384,27 +384,6 @@ def main():
             )
             torch.save(tokenized_datasets, "/data/medioli/datasets/tokenized_datasets.pt")
             logger.info("SAVED TOKENIZED DATASET")
-
-        if os.path.exists(
-                "/data/medioli/datasets/synsets_dataset.pt"):  # TOGLI IL NOT QUANDO SALVI NA ROBA DECENTE
-            logger.info("Load synsets dataset: /data/medioli/datasets/synsets_dataset.pt")
-            tokenized_datasets = torch.load("/data/medioli/datasets/synsets_dataset.pt")
-        else:
-            
-            def synsets_function(examples):
-                synsets = [sentence_synsets(line) for line in tqdm(examples["text"]) if len(line) > 0 and not line.isspace()]
-                return synsets
-
-            logger.info("Compute SYNSETS DATASET")
-            synsets_dataset = datasets.map(
-                synsets_function,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=[text_column_name],
-                load_from_cache_file=not data_args.overwrite_cache,
-            )
-            torch.save(synsets_dataset, "/data/medioli/datasets/synsets_dataset.pt")
-            logger.info("SAVED TOKENIZED DATASET")
     else:
         # Otherwise, we tokenize every text, then concatenate them together before splitting them in smaller parts.
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
