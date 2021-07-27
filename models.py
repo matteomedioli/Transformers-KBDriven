@@ -11,7 +11,7 @@ import copy
 import torch
 from torch import nn
 import torch.nn.functional as F
-
+from wsd import sentence_synsets
 device = cuda_setup()
 
 
@@ -72,7 +72,7 @@ class BertForWordNodeRegression(nn.Module):
         self.node_dict = node_dict
         self.tokenizer = tokenizer
         self.reg_lambda = reg_lambda
-
+        # self.config = config
         self.bert = bert_model
 
         self.regression = regression_model
@@ -91,25 +91,17 @@ class BertForWordNodeRegression(nn.Module):
                 return_dict=None,
                 regression_criterion=nn.MSELoss()):
         if self.graph_regularization:
-
             output_hidden_states = True
             node_batch = []
-            for batch in input_ids:
-                words_node = []
-                for ids in batch:
-                    # synset_embedding = self.node_embeddings[wn.synsets(self.tokenizer.decode(ids))[0]]
-                    # words_node.append(synset_embedding)
-                    if wn.lemmas(self.tokenizer.decode(ids)):
-                        lemma_embedding = self.node_dict[str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2]]
-                        words_node.append(torch.tensor(lemma_embedding))
-                        # print(self.tokenizer.decode(ids), str(wn.lemmas(self.tokenizer.decode(ids))[0])[7:-2],
-                        # lemma_embedding)
-                    else:
-                        words_node.append(torch.full([64], fill_value=1, dtype=torch.float))
-                words_node_t = torch.stack(words_node)
-                node_batch.append(words_node_t)
+            for ids in input_ids:
+                sentence = self.tokenizer.batch_decode(ids)
+                # print("IDS: ",ids, len(ids))
+                # print("Sentence Split: ",sentence, len(sentence),"\n")
+                words_node = sentence_synsets(sentence, self.node_dict)    
+                # print(words_node.size())
+                node_batch.append(words_node)
             word_node_embeddings = torch.stack(node_batch)
-
+            # print(word_node_embeddings.size())
         outputs = self.bert(input_ids=input_ids,
                             attention_mask=attention_mask,
                             token_type_ids=token_type_ids,

@@ -5,7 +5,7 @@ import numpy as np
 nltk.download('stopwords')
 from nltk.corpus import stopwords
 import re
-
+import torch
 
 def lcs(X, Y, m, n):
     L = [[0 for x in range(n + 1)] for x in range(m + 1)]
@@ -178,40 +178,52 @@ def max_cj(ci, cjs):
         return wup_similarity(ci, cj, score(ci, cj))
 
 
-def sentence_synsets(sentence, evaluate_neighbors=True, neighbors_d = 2):
-    index = [i for i, x in enumerate(sentence) if x.lower() not in stopwords.words("english")]
-    sentence = [x.lower() for x in sentence if x.lower() not in stopwords.words("english")]
+def sentence_synsets(sentence, node_embeddings, evaluate_neighbors=True, neighbors_d=2):
+    sw = stopwords.words("english")
     synsets = {}
-    for i, (target, real_ind) in enumerate(zip(sentence, index)):
-        if evaluate_neighbors:
-            neighbors = []
-            for x in range(1,neighbors_d):
-                neg = (i - x) % len(sentence)
-                pos = (i + x) % len(sentence)
-                if neg < i:
-                    neighbors.append(sentence[neg])
-                else:
-                    neighbors.append(sentence[(pos+1) % len(sentence)])
-                if pos > i:
-                    neighbors.append(sentence[pos])
-                else:
-                    neighbors.append(sentence[(neg-1)% len(sentence)])
+    sentence_node_embeddings = []
+    for i, target in enumerate(sentence):
+        if "[CLS]" not in target and "[MASK]" not in target and "[PAD]" not in target and target.lower() not in sw:
+            target_synsets = wn.synsets(target)
+            if evaluate_neighbors and target not in synsets.keys() and target_synsets is not None:
+                neighbors = []
+                for x in range(1,neighbors_d):
+                    neg = (i - x) % len(sentence)
+                    pos = (i + x) % len(sentence)
+                    if neg < i:
+                        neighbors.append(sentence[neg])
+                    else:
+                        neighbors.append(sentence[(pos+1) % len(sentence)])
+                    if pos > i:
+                        neighbors.append(sentence[pos])
+                    else:
+                        neighbors.append(sentence[(neg-1)% len(sentence)])
+            else:
+                neighbors = sentence
+            M = 0
+            best_ci = None
+            for ci in target_synsets:
+                max_sum = 0
+                if ci is not None and target not in synsets.keys():
+                    for other in neighbors:
+                        if other is not target:
+                            for cj in wn.synsets(other):
+                                wup = wup_similarity(ci,cj)
+                                max_sum += wup
+                    if max_sum > M:
+                        M=max_sum
+                        best_ci = ci
+            if best_ci is not None:
+                synset_name = best_ci.name()
+                synsets[target] = synset_name
+                embedding = node_embeddings[synset_name]
+                sentence_node_embeddings.append(torch.tensor(embedding))
+                # print(target, torch.tensor(embedding))
+            else:
+                # print(config.dgn.hidden_sizes_list[-1])
+                sentence_node_embeddings.append(torch.full([64], fill_value=1, dtype=torch.float))
+                # print(target, torch.full([64], fill_value=1, dtype=torch.float))
         else:
-            neighbors = sentence
-        M = 0
-        best_ci = None
-        for ci in wn.synsets(target):
-            max_sum = 0
-            for other in neighbors:
-                if other is not target:
-                    for cj in wn.synsets(other):
-                        wup = score(ci,cj)
-                        max_sum += wup
-            if max_sum > M:
-                M=max_sum
-                best_ci = ci
-        if best_ci is not None:
-            synsets[real_ind] = best_ci.name()
-            print(target, best_ci.name())
-    return synsets
-
+            sentence_node_embeddings.append(torch.full([64], fill_value=1, dtype=torch.float))
+            # print(target, torch.full([64], fill_value=1, dtype=torch.float))
+    return torch.stack(sentence_node_embeddings)
